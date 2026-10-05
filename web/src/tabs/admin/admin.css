@@ -1,0 +1,10 @@
+.invite-code { font-family: var(--mono); font-size: 18px; letter-spacing: 3px; font-weight: 500; }
+.invite-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; flex-wrap: wrap; }
+.invite-row + .invite-row, .member-row + .member-row { border-top: 1px solid var(--outline-variant); }
+.member-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; flex-wrap: wrap; }
+
+.role-select { width: 150px; height: 40px; padding: 0 14px; font-size: 13px; cursor: pointer; }
+
+.invite-new { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.invite-uses { display: flex; flex-direction: column; gap: 4px; width: 220px; max-width: 100%; }
+.invite-uses .field { text-align: center; }

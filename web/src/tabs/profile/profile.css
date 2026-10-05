@@ -1,0 +1,5 @@
+.profile-head { display: flex; align-items: center; gap: 16px; }
+.profile-name { font-size: 20px; font-weight: 500; }
+.member { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.member + .member { border-top: 1px solid var(--outline-variant); }
+.label { font-size: 13px; font-weight: 500; color: var(--label); }

@@ -1,0 +1,187 @@
+.week-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.day-card--today { border-color: var(--primary); border-width: 2px; }
+.day-head { display: flex; align-items: center; gap: 10px; }
+.lesson { display: flex; gap: 14px; padding: 12px 14px; border-radius: var(--r-inner); background: var(--surface-container); }
+.lesson--now { background: var(--primary-container); color: var(--on-primary-container); outline: 2px solid var(--primary); }
+.lesson-time { width: 52px; flex-shrink: 0; font-family: var(--mono); font-size: 13px; line-height: 1.4; }
+.lesson-time b { display: block; font-weight: 500; }
+.lesson-subj { font-weight: 500; }
+.lesson-meta { font-size: 13px; color: var(--neutral-text); margin-top: 2px; }
+.lesson--now .lesson-meta { color: inherit; opacity: .8; }
+
+/* Сетка-календарь: Пн–Сб × пары (десктоп) */
+.sched-grid {
+    display: grid; grid-template-columns: 68px repeat(6, minmax(0, 1fr));
+    gap: 6px; background: var(--surface-bright); border: 1px solid var(--outline-variant);
+    border-radius: var(--r-card); padding: 12px;
+}
+.sg-head { text-align: center; padding: 10px 4px; font-size: 13px; font-weight: 500; color: var(--label); border-radius: var(--r-pill); }
+.sg-head--today { background: var(--primary-container); color: var(--on-primary-container); }
+.sg-time { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-family: var(--mono); font-size: 11px; color: var(--neutral-text); text-align: center; }
+.sg-time b { font-size: 15px; font-weight: 500; color: var(--label); font-family: var(--font); }
+.sg-cell { min-height: 84px; padding: 8px; border-radius: var(--r-inner); border: 1px solid transparent; background: color-mix(in srgb, var(--surface-container) 40%, transparent); display: flex; flex-direction: column; gap: 6px; }
+.sg-cell--full { background: var(--surface-container); }
+.sg-cell--now { background: var(--primary-container); color: var(--on-primary-container); outline: 2px solid var(--primary); }
+.sg-lesson { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; font-size: 12px; }
+.sg-lesson .lesson-subj { font-size: 13px; word-break: break-word; }
+.sg-meta { font-size: 11px; color: var(--neutral-text); }
+.sg-cell--now .sg-meta { color: inherit; opacity: .8; }
+.sg-corner { }
+/* Два вида: сетка (sched--grid) и карточки (sched--cards) */
+.sched { display: flex; flex-direction: column; gap: 12px; }
+.sched-view { margin-left: auto; }
+.sched--grid .day-pills, .sched--grid .sched-cards { display: none; }
+.sched--cards .sched-grid { display: none; }
+.day-pills { display: none; }
+.sched-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.sched-cards .card { padding: 12px; gap: 8px; border-radius: 20px; }
+.sched-cards .card-title { font-size: 14px; }
+.sched-cards .lesson { gap: 10px; padding: 8px 10px; }
+.sched-cards .lesson-time { width: 40px; font-size: 11px; }
+.sched-cards .lesson-subj { font-size: 13px; }
+.sched-cards .lesson-meta { font-size: 11px; margin-top: 1px; }
+.sched-cards .muted { font-size: 12px; }
+@media (max-width: 1000px) { .sched-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+    .sched-view { margin-left: 0; }
+    .sched--cards .day-pills { display: inline-flex; }
+    .sched-cards { grid-template-columns: 1fr; gap: 10px; }
+    .day-card--hidden { display: none; }
+    /* сетка на узком экране прокручивается по горизонтали */
+    .sched--grid .sched-grid { min-width: 720px; }
+    .sched--grid { overflow-x: auto; }
+}
+
+/* Десктоп: расписание целиком в высоту окна, без прокрутки страницы */
+@media (min-width: 641px) {
+    .main:has(.sched) { flex: none; height: calc(100dvh - 68px); padding: 8px 24px 16px; gap: 0; }
+    .main:has(.sched) > .page-title { display: none; }
+    .sched { flex: 1; min-height: 0; }
+
+    .sched--cards .sched-cards { flex: 1; min-height: 0; grid-template-rows: repeat(2, minmax(0, 1fr)); }
+    .sched--cards .sched-cards .card { height: 100%; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+    .sched--cards .sched-cards .day-card--today { height: 100%; }
+
+    .sched--grid .sched-grid {
+        flex: 1; min-height: 0; gap: 4px; padding: 8px;
+        grid-template-rows: auto repeat(var(--rows, 6), minmax(0, 1fr));
+    }
+    .sched--grid .sg-head { padding: 6px 4px; }
+    .sched--grid .sg-cell { min-height: 0; height: 100%; padding: 5px 8px; overflow-y: auto; scrollbar-width: thin; gap: 4px; justify-content: center; }
+    .sched--grid .sg-lesson { gap: 1px; }
+    .sched--grid .sg-time { gap: 0; }
+}
+@media (min-width: 641px) {
+    .sched--grid .sg-lesson .chip { padding: 0 6px; font-size: 11px; line-height: 16px; }
+}
+
+/* Карточка дня: все пары недели ячейками со своим временем, пустая пара — «дыра» */
+.day-rows { display: flex; flex-direction: column; gap: 6px; }
+.lesson--empty { background: color-mix(in srgb, var(--surface-container) 40%, transparent); }
+.lesson--empty .lesson-time { opacity: .6; }
+.sched-cards .lesson { align-items: center; }
+.lesson { min-height: 52px; }
+@media (min-width: 641px) {
+    .sched--cards .sched-cards .card { overflow: hidden; }
+    .sched--cards .day-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: repeat(var(--rows, 6), minmax(0, 1fr)); gap: 4px; }
+    .sched--cards .day-rows .lesson { min-height: 0; padding: 3px 10px; overflow: hidden; }
+    .sched--cards .day-rows .lesson-subj { font-size: 12px; line-height: 1.25; }
+    .sched--cards .day-rows .lesson-meta { font-size: 11px; line-height: 1.2; margin-top: 0; }
+    .sched--cards .day-rows .lesson-time { font-size: 10.5px; line-height: 1.25; }
+    .sched--cards .sched-cards .card { padding: 10px 12px; gap: 6px; }
+}
+
+/* Больше воздуха вокруг текста */
+.lesson { gap: 16px; }
+.lesson-time { width: 46px; }
+@media (min-width: 641px) {
+    .sched--cards .sched-cards { gap: 14px; }
+    .sched--cards .sched-cards .card { padding: 10px 16px 12px; gap: 8px; }
+    .sched--cards .day-rows { gap: 5px; }
+    .sched--cards .day-rows .lesson { padding: clamp(2px, .6vh, 6px) 14px; gap: 16px; }
+    .sched--cards .day-rows .lesson-subj { font-size: 12.5px; line-height: 1.3; }
+    .sched--cards .day-rows .lesson-meta { font-size: 11px; line-height: 1.3; margin-top: 1px; letter-spacing: .01em; }
+    .sched--grid .sched-grid { gap: 6px; padding: 12px; }
+    .sched--grid .sg-cell { padding: 8px 14px; gap: 6px; }
+    .sched--grid .sg-lesson { gap: 3px; }
+    .sched--grid .sg-lesson .lesson-subj { line-height: 1.3; }
+    .sched--grid .sg-meta { line-height: 1.35; }
+}
+@media (max-width: 640px) {
+    .lesson { padding: 14px 16px; }
+    .lesson-meta { margin-top: 4px; line-height: 1.4; }
+}
+
+/* Воздух растёт с высотой экрана (на 693px — минимум, чтобы всё влезало без прокрутки) */
+@media (min-width: 641px) {
+    .sched { --air: clamp(2px, calc(2px + (100dvh - 693px) / 22), 14px); --fs: clamp(12.5px, calc(12.5px + (100dvh - 693px) / 260), 14.5px); }
+    .sched--cards .day-rows .lesson { padding: var(--air) 14px; }
+    .sched--cards .day-rows .lesson-subj { font-size: var(--fs); }
+    .sched--cards .day-rows .lesson-meta { font-size: calc(var(--fs) - 1.5px); }
+    .sched--cards .sched-cards .card { padding: 10px 16px 12px; }
+    .sched--cards .day-rows { gap: calc(var(--air) / 2 + 3px); }
+    .sched--grid .sg-cell { padding: calc(var(--air) + 4px) 14px; }
+}
+
+/* Клик по паре — попап с подробностями */
+.lesson--hit { cursor: pointer; }
+.lesson--hit:hover:not(.lesson--now) { background: color-mix(in srgb, var(--primary) 12%, var(--surface-container)); }
+.lesson-hit { border: none; background: transparent; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%; }
+.sg-cell--full:hover:not(.sg-cell--now) { background: color-mix(in srgb, var(--primary) 12%, var(--surface-container)); }
+.lesson-info { display: flex; flex-direction: column; gap: 2px; }
+.lesson-info > div { display: flex; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--outline-variant); }
+.lesson-info > div:last-child { border-bottom: none; }
+.lesson-info dt { width: 120px; flex-shrink: 0; color: var(--neutral-text); font-size: 13px; }
+.lesson-info dd { font-size: 14px; font-weight: 500; }
+
+/* В карточках мета — одной строкой, длинное ФИО обрезается многоточием (полностью — в попапе) */
+.sched--cards .lesson-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sched--cards .lesson .grow { min-width: 0; }
+
+/* Десктопный попап рядом с парой */
+.lesson-pop {
+    position: fixed; z-index: 400; width: 340px; max-height: calc(100dvh - 16px); overflow-y: auto; padding: 14px 18px 8px;
+    background: var(--surface-bright); border: 1px solid var(--outline-variant); border-radius: var(--r-card);
+    box-shadow: 0 8px 28px var(--shadow); animation: dialog-in 200ms var(--ease-in);
+}
+.lesson-pop-head { display: flex; align-items: flex-start; gap: 8px; }
+.lesson-pop-title { flex: 1; font-size: 16px; font-weight: 500; line-height: 1.3; padding-top: 6px; }
+.lesson-pop .lesson-info > div { padding: 8px 0; gap: 12px; }
+.lesson-pop .lesson-info dt { width: 96px; font-size: 12px; }
+.lesson-pop .lesson-info dd { font-size: 13px; }
+.is-sel { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* Домашнее задание и файлы в попапе */
+.hw { display: flex; flex-direction: column; gap: 8px; padding: 6px 0 10px; border-top: 1px solid var(--outline-variant); margin-top: 4px; }
+.hw-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; }
+.hw-title { font-size: 13px; font-weight: 500; color: var(--label); }
+.hw-body { white-space: pre-wrap; word-break: break-word; line-height: 1.45; font-size: 13px; }
+.hw-empty { font-size: 13px; color: var(--neutral-text); }
+.hw .field { min-height: 80px; font-size: 13px; }
+.hw-files { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.hw-files li { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.hw-file { font-size: 13px; color: var(--primary); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hw-file:hover { text-decoration: underline; }
+.hw-badges { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.hw-badge { display: inline-flex; align-items: center; gap: 3px; color: var(--primary); font-size: 11px; font-weight: 500; flex-shrink: 0; }
+.sg-lesson .hw-badges { margin-top: 2px; }
+.lesson-pop .hw-badge, .sg-lesson .hw-badge { margin-top: 1px; }
+.dialog .hw { margin-top: 0; }
+
+/* Файлы — капсулами */
+.hw-files { list-style: none; display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.hw-files li.hw-pill { display: inline-flex; align-items: stretch; min-height: 0; max-width: 100%; border-radius: var(--r-pill); background: var(--primary-container); color: var(--on-primary-container); overflow: hidden; }
+.hw-pill-link { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; color: inherit; text-decoration: none; min-width: 0; font-size: 13px; position: relative; }
+.hw-pill-link:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.hw-pill-link svg { flex-shrink: 0; }
+.hw-pill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.hw-pill-size { font-size: 11px; opacity: .75; white-space: nowrap; flex-shrink: 0; }
+.hw-pill-x { display: inline-flex; align-items: center; justify-content: center; width: 40px; border: none; background: transparent; color: var(--danger-text); cursor: pointer; border-left: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
+.hw-pill-x:hover { background: rgba(186, 26, 26, .12); }
+
+/* Суббота: свои звонки — время прямо в ячейке колонки */
+.sg-sat-time { font-family: var(--mono); font-size: 10.5px; color: var(--neutral-text); white-space: nowrap; }
+.sg-cell--now .sg-sat-time { color: inherit; opacity: .8; }
+
+/* Дата на месте переключателя недель */
+.date-pill { display: inline-flex; align-items: center; height: 38px; font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--on-surface); }

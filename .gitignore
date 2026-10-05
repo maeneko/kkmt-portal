@@ -1,0 +1,51 @@
+# --- Зависимости и сборка ---
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+.eslintcache
+coverage/
+
+# --- Секреты и локальные настройки (в репозиторий только .env.example) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Загруженные пользователями файлы (домашние задания) ---
+uploads/
+
+# --- Дампы и бэкапы БД (скрипты расписания в sql/ — коммитим) ---
+*.dump
+*.sql.gz
+backups/
+
+# --- Логи ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Docker: локальные переопределения ---
+docker-compose.override.yml
+
+# --- Редакторы и IDE ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# --- ОС ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Claude Code: локальные настройки ---
+.claude/settings.local.json

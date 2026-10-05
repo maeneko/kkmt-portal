@@ -1,0 +1,14 @@
+services:
+  kkmt:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env
+    volumes:
+      - kkmt-uploads:/data/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  kkmt-uploads:

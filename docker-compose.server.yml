@@ -1,0 +1,25 @@
+# Боевой сервер: общая docker-сеть с MySQL (ma7_default), порт только на localhost для nginx.
+#   docker compose -f docker-compose.server.yml up -d --build
+services:
+  kkmt:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    image: kkmt:latest
+    container_name: kkmt
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:3010:3000"
+    volumes:
+      - kkmt-uploads:/data/uploads
+    networks: [ma7]
+    mem_limit: 256m
+
+networks:
+  ma7:
+    name: ma7_default
+    external: true
+
+volumes:
+  kkmt-uploads:
