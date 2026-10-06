@@ -1,13 +1,13 @@
 # KKMT — портал группы
 
 Лента, расписание, профиль. Вход через Telegram Login Widget + одноразовый инвайт-ключ (6 символов `0-9A-Z`).
-React + Vite + TS (`web/`), Express + MySQL (`server/`), один контейнер.
+React + Vite + TS (`web/`), Go + MySQL (`server/`), один контейнер.
 
 ## Запуск на сервере
 1. В BotFather: создать бота → открыть бота → **Login Widget** → добавить Allowed URL `https://ваш-домен`; там же показан **Client ID** (вход работает только по https). Токен бота приложению не нужен.
 2. `cp .env.example .env` и заполнить: `TELEGRAM_CLIENT_ID`, `OWNER_TG_ID` (ваш Telegram ID — первый вход без ключа, роль «главный админ»), параметры БД.
 
-Вход идёт через «Log In With Telegram» (OpenID Connect): сервер проверяет подпись `id_token` по встроенным ключам Telegram (`server/telegram-jwks.ts`, обновить: `npm run update-jwks`), поэтому серверу не нужен доступ к Telegram.
+Вход идёт через «Log In With Telegram» (OpenID Connect): сервер проверяет подпись `id_token` по встроенным ключам Telegram (`server/telegram_jwks.json`, обновить: `npm run update-jwks`), поэтому серверу не нужен доступ к Telegram.
 3. MySQL: создать базу и пользователя (таблицы создаются сами при старте):
    `CREATE DATABASE kkmt CHARACTER SET utf8mb4; CREATE USER 'kkmt'@'%' IDENTIFIED BY '...'; GRANT ALL ON kkmt.* TO 'kkmt'@'%';`
    MySQL-контейнер должен публиковать порт 3306 на хост (`-p 3306:3306`); контейнер сайта ходит на него через `host.docker.internal`.
@@ -20,4 +20,4 @@ React + Vite + TS (`web/`), Express + MySQL (`server/`), один контейн
 Главный админ входит → «Админка» → создаёт инвайт-ключи и раздаёт → назначает старосту админом → заполняет расписание (дата начала семестра задаёт чётность недели).
 
 ## Разработка
-`npm run dev` (API :3000 + Vite :5173). С `DEV_LOGIN=1` на экране входа появляется вход по Telegram ID без виджета — **в проде держать `0`**.
+Нужны Go 1.26+ и Node 22+. `npm run dev` запускает Go-сервер (API :3000) и Vite (:5173), либо по отдельности: `go run ./server` и `npx vite`. Тесты бэкенда: `go test ./server`. С `DEV_LOGIN=1` на экране входа появляется вход по Telegram ID без виджета — **в проде держать `0`**.

@@ -15,28 +15,32 @@ permissions:
 
 jobs:
   check:
-    name: Typecheck и сборка
+    name: Проверка и сборка
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # Бэкенд (Go)
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./server
+      - run: go test ./server
+      - run: go build -o dist/kkmt ./server
+
+      # Фронтенд (React + Vite)
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
       - run: npm ci
-
-      # tsc для фронта и для сервера
       - run: npm run typecheck
-
-      # vite build (фронт) + tsc (сервер) → dist/
       - run: npm run build
 
       - name: Собранные файлы на месте
         run: |
           test -f dist/public/index.html
-          test -f dist/server/index.js
+          test -f dist/kkmt
 
   docker:
     name: Docker-образ собирается

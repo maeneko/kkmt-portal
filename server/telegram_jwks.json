@@ -1,7 +1,4 @@
-// Публичные ключи Telegram для проверки подписи id_token (https://oauth.telegram.org/.well-known/jwks.json).
-// Встроены, потому что с боевого сервера Telegram недоступен. Обновить: npm run update-jwks
-export interface TgJwk { kty: string; kid: string; alg: string; n?: string; e?: string; x?: string; y?: string; crv?: string }
-export const TELEGRAM_JWKS: TgJwk[] = [
+[
     {
         "alg": "RS256",
         "e": "AQAB",
@@ -17,4 +14,4 @@ export const TELEGRAM_JWKS: TgJwk[] = [
         "crv": "P-256",
         "kid": "oidc-es256-1"
     }
-];
+]

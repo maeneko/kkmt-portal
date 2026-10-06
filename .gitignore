@@ -1,6 +1,7 @@
 # --- Зависимости и сборка ---
 node_modules/
 dist/
+/kkmt
 *.tsbuildinfo
 .vite/
 .eslintcache
