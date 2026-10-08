@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -25,7 +29,8 @@ const csp = "default-src 'self'; base-uri 'self'; object-src 'none'; " +
 	"frame-src https://oauth.telegram.org; " +
 	"img-src 'self' data: https://t.me https://*.telesco.pe https://*.telegram.org; " +
 	"style-src 'self' 'unsafe-inline'; " +
-	"connect-src 'self' https://oauth.telegram.org"
+	// аватарки Telegram загружает и кеширует service worker (fetch) — им нужен connect-src
+	"connect-src 'self' https://oauth.telegram.org https://t.me https://*.telesco.pe https://*.telegram.org"
 
 func main() {
 	_ = godotenv.Load()
@@ -142,39 +147,60 @@ func sessionMiddleware(next http.Handler) http.Handler {
 
 // ---------- STATIC ----------
 
+// static отдаёт сборку фронтенда; неизвестные пути — index.html (SPA).
+// /assets/* с хешем в имени кешируются навсегда, html — с проверкой (no-cache), чтобы после деплоя сразу была новая версия.
 func static(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet &&
-		r.Method != http.MethodHead {
-		http.Error(
-			w,
-			"Method not allowed",
-			http.StatusMethodNotAllowed,
-		)
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	path := filepath.Join(
-		publicDir,
-		filepath.Clean("/"+r.URL.Path),
-	)
-
-	if info, err := os.Stat(path); err == nil && !info.IsDir() {
-		if strings.HasPrefix(r.URL.Path, "/assets/") {
-			w.Header().Set(
-				"Cache-Control",
-				"public, max-age=31536000, immutable",
-			)
+	path := filepath.Join(publicDir, filepath.Clean("/"+r.URL.Path))
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		path = filepath.Join(publicDir, "index.html")
+		if info, err = os.Stat(path); err != nil {
+			http.NotFound(w, r)
+			return
 		}
-
-		http.ServeFile(w, r, path)
-		return
 	}
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/assets/"):
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	case filepath.Ext(path) == ".html" || filepath.Base(path) == "sw.js":
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	if !serveGzip(w, r, path, info) {
+		http.ServeFile(w, r, path)
+	}
+}
 
-	http.ServeFile(
-		w,
-		r,
-		filepath.Join(publicDir, "index.html"),
-	)
+// gzipCache — сжатые копии текстовых файлов сборки: сжимаем один раз, а не на каждый запрос.
+var gzipCache sync.Map // путь|время изменения → []byte
+
+// serveGzip отдаёт js/css/html/svg/json сжатыми, если браузер умеет gzip.
+func serveGzip(w http.ResponseWriter, r *http.Request, path string, info os.FileInfo) bool {
+	ext := filepath.Ext(path)
+	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || !strings.Contains(".js.css.html.svg.json", ext) || ext == "" {
+		return false
+	}
+	key := path + "|" + info.ModTime().String()
+	data, ok := gzipCache.Load(key)
+	if !ok {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return false
+		}
+		var buf bytes.Buffer
+		zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+		zw.Write(raw)
+		zw.Close()
+		data, _ = gzipCache.LoadOrStore(key, buf.Bytes())
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Add("Vary", "Accept-Encoding")
+	w.Header().Set("Content-Type", mime.TypeByExtension(ext))
+	http.ServeContent(w, r, "", info.ModTime(), bytes.NewReader(data.([]byte)))
+	return true
 }
 
 // ---------- JSON ----------

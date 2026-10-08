@@ -41,6 +41,18 @@ export default function TelegramLogin({ clientId, onAuth }: { clientId: string; 
 
     const open = () => {
         setError('');
+        // Библиотека Telegram сразу после window.open зовёт focus() у нового окна — Firefox считает это
+        // второй попыткой без клика и пишет предупреждение в консоль. Окно и так открывается поверх,
+        // поэтому на время вызова отключаем этот focus() (auth открывает окно синхронно, внутри try).
+        const orig = window.open;
+        window.open = (...args: Parameters<typeof window.open>) => {
+            const w = orig.apply(window, args);
+            try { if (w) w.focus = () => {}; } catch { /* окно уже чужого сайта — не мешаем */ }
+            return w;
+        };
+        try { auth(); } finally { window.open = orig; }
+    };
+    const auth = () => {
         window.Telegram?.Login?.auth({ client_id: clientId, scope: ['profile'], nonce, lang: 'ru' }, r => {
             loadNonce(); // nonce одноразового окна — следующий вход получит новый
             if (r.error) { if (r.error !== 'popup_closed') setError(`Telegram: ${r.error}`); return; }
