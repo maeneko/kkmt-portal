@@ -315,7 +315,8 @@ func telegramLogin(w http.ResponseWriter, r *http.Request) {
 	if first == "" {
 		first = c.Name
 	}
-	finishLogin(w, tgData{c.ID, first, c.FamilyName, c.Username, c.Picture}, in.Invite, in.RealName)
+	id, _ := c.ID.Int64()
+	finishLogin(w, tgData{id, first, c.FamilyName, c.Username, c.Picture}, in.Invite, in.RealName)
 }
 
 // Только для локальной разработки (DEV_LOGIN=1): вход без Telegram.
@@ -387,13 +388,13 @@ func clientID() string {
 
 type tgClaims struct {
 	jwt.RegisteredClaims
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	GivenName  string `json:"given_name"`
-	FamilyName string `json:"family_name"`
-	Username   string `json:"preferred_username"`
-	Picture    string `json:"picture"`
-	Nonce      string `json:"nonce"`
+	ID         json.Number `json:"id"` // Telegram присылает id то числом, то строкой — json.Number принимает оба
+	Name       string      `json:"name"`
+	GivenName  string      `json:"given_name"`
+	FamilyName string      `json:"family_name"`
+	Username   string      `json:"preferred_username"`
+	Picture    string      `json:"picture"`
+	Nonce      string      `json:"nonce"`
 }
 
 func verifyIDToken(token string) (*tgClaims, error) {
@@ -415,7 +416,7 @@ func verifyIDToken(token string) (*tgClaims, error) {
 	if !checkNonce(c.Nonce) {
 		return nil, errors.New("nonce")
 	}
-	if c.ID <= 0 {
+	if id, err := c.ID.Int64(); err != nil || id <= 0 {
 		return nil, errors.New("нет id (нужен scope profile)")
 	}
 	return c, nil
