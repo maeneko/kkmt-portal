@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, errText, isModerator, type PageProps } from '../../lib/api';
-import { IcoClip, IcoEdit, IcoNote } from '../../components/icons';
+import { IcoCalendar, IcoClip, IcoEdit, IcoNote } from '../../components/icons';
 import HomeworkBlock, { type HwItem } from './HomeworkBlock';
 import ScheduleEditor from './ScheduleEditor';
+import DatePicker from './DatePicker';
 import './schedule.css';
 
 export interface Lesson { id?: number; weekday: number; pair_no: number; parity: 'all' | 'odd' | 'even'; subject: string; teacher: string; room: string; kind: string; remote: boolean; changed?: boolean }
@@ -67,6 +68,8 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
     // Правка расписания прямо в карточке дня: замены на эту неделю или постоянное расписание
     const [editing, setEditing] = useState<'week' | 'all' | null>(null);
     const [dial, setDial] = useState(false);
+    // календарь по нажатию на дату: переход на любую неделю, в том числе прошлую (чтобы добавить дз и файлы задним числом)
+    const [picking, setPicking] = useState(false);
     const [dir, setDir] = useState<'next' | 'prev'>('next');
     const touch = useRef<{ x: number; y: number } | null>(null);
 
@@ -163,7 +166,10 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
     return (
         <div className={`sched sched--${view}${editing ? ' sched--editing' : ''}`}>
             <div className="week-bar">
-                <span className="date-pill">{target.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                <button className="date-pill date-pill--btn" title="Выбрать дату" onClick={() => setPicking(true)}>
+                    <IcoCalendar />{target.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                </button>
+                {picking && <DatePicker value={target} onClose={() => setPicking(false)} onPick={d => { setPicking(false); goTo('schedule', { date: d, pair: 0 }); }} />}
                 {cur < 0 && <button className="btn btn--tonal btn--sm" onClick={() => goTo('schedule')}>К сегодня</button>}
                 <span className="chip chip--primary">{parity === 'odd' ? 'Нечётная' : 'Чётная'} неделя</span>
                 <div className="seg sched-view" role="tablist" aria-label="Вид расписания">
