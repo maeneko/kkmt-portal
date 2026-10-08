@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 
-export type Role = 'student' | 'admin' | 'owner';
+export type Role = 'student' | 'moderator' | 'admin' | 'owner';
 
 export interface Me {
     id: number;
@@ -9,6 +9,7 @@ export interface Me {
     last_name: string | null;
     photo_url: string | null;
     display_name: string | null;
+    real_name?: string | null; // фамилия и имя; приходит только модераторам и выше (и своё)
     bio: string;
     role: Role;
 }
@@ -18,7 +19,11 @@ export interface PageProps {
     reloadMe: () => Promise<void>;
     showMsg: (text: string) => void;
     logout: () => void;
+    // переход на другую вкладку; для расписания — с фокусом на дату и пару
+    goTo: (tab: string, focus?: Focus) => void;
+    focus: Focus | null;
 }
+export interface Focus { date: string; pair: number }
 export type Page = ComponentType<PageProps>;
 
 export class ApiError extends Error {
@@ -37,7 +42,8 @@ export async function api<T = unknown>(method: string, url: string, body?: unkno
     return data as T;
 }
 
-export const isAdmin = (m: Me) => m.role !== 'student';
+export const isAdmin = (m: Me) => m.role === 'admin' || m.role === 'owner';
+export const isModerator = (m: Me) => m.role !== 'student';
 // Ник/имя на экране не длиннее 32 символов: остальное заменяется на «...» (считаем символы Unicode, эмодзи не рвётся)
 export const NICK_MAX = 32;
 export const clip = (s: string, max = NICK_MAX) => {

@@ -14,6 +14,9 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
     const [devNick, setDevNick] = useState('');
     const [needInvite, setNeedInvite] = useState(false);
     const [invite, setInvite] = useState('');
+    // после верного ключа новый участник обязательно вводит «Фамилия Имя»
+    const [needName, setNeedName] = useState(false);
+    const [realName, setRealName] = useState('');
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
 
@@ -25,14 +28,18 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
             await api('POST', path, body);
             onDone();
         } catch (e) {
-            if (e instanceof ApiError && e.data.needInvite) {
+            if (e instanceof ApiError && e.data.needName) {
+                setNeedName(true);
+                if (realName.trim()) setError(e.message);
+            } else if (e instanceof ApiError && e.data.needInvite) {
                 setNeedInvite(true);
+                setNeedName(false);
                 if (invite) setError(e.message);
             } else setError(errText(e));
         } finally { setBusy(false); }
     };
 
-    const withInvite = invite.trim() ? { invite: invite.trim().toUpperCase() } : {};
+    const withInvite = { ...(invite.trim() ? { invite: invite.trim().toUpperCase() } : {}), ...(realName.trim() ? { realName: realName.trim() } : {}) };
     const sendTg = (u: TgSession) => { setTg(u); submit('/auth/telegram', { idToken: u.idToken, ...withInvite }); };
     const sendDev = () => submit('/auth/dev', { tgId: Number(devId), username: devNick, ...withInvite });
     // Ключ отправляется сам, как только введён шестой символ (код передаём явно: state ещё не обновился)
@@ -42,6 +49,8 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
         else submit('/auth/dev', { tgId: Number(devId), username: devNick, ...body });
     };
     const valid = /^[0-9A-Za-z]{6}$/.test(invite.trim());
+    const nameOk = realName.trim().split(/\s+/).length >= 2;
+    const back = () => { setNeedInvite(false); setNeedName(false); setInvite(''); setRealName(''); setTg(null); setError(''); };
     // Кто регистрируется: данные из виджета Telegram (или dev-ID без виджета)
     const who = tg
         ? { id: tg.id, name: clip(tg.name || tg.nick || `ID ${tg.id}`), nick: tg.nick, photo: tg.photo }
@@ -52,7 +61,16 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
             <div className="login-card">
                 <Logo size={52} />
                 <h1 className="login-title">{needInvite ? 'Первый вход' : 'Приветствую вас!'}</h1>
-                {needInvite ? (
+                {needName ? (
+                    <>
+                        <p className="login-sub">Ключ принят. Введите фамилию и имя — их видят только староста и модераторы:</p>
+                        <input className="field" autoFocus maxLength={64} autoComplete="name" placeholder="Иванов Иван" aria-label="Фамилия и имя"
+                               value={realName} onChange={e => { setRealName(e.target.value); setError(''); }}
+                               onKeyDown={e => e.key === 'Enter' && nameOk && !busy && (tg ? sendTg(tg) : sendDev())} />
+                        <button className="btn btn--primary btn--full" disabled={busy || !nameOk} onClick={() => (tg ? sendTg(tg) : sendDev())}>Готово</button>
+                        <button className="btn btn--outline btn--full" onClick={back}>Назад</button>
+                    </>
+                ) : needInvite ? (
                     <>
                         <div className="login-who">
                             <Avatar name={who.name} photo={who.photo} />
@@ -67,7 +85,7 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
                                        onChange={v => { setInvite(v); setError(''); if (/^[0-9A-Za-z]{6}$/.test(v) && !busy) sendCode(v); }}
                                        onEnter={() => valid && (tg ? sendTg(tg) : sendDev())} />
                         </div>
-                        <button className="btn btn--outline btn--full" onClick={() => { setNeedInvite(false); setInvite(''); setTg(null); setError(''); }}>Назад</button>
+                        <button className="btn btn--outline btn--full" onClick={back}>Назад</button>
                     </>
                 ) : (
                     <>

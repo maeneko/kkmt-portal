@@ -6,7 +6,7 @@ import { IcoCopy, IcoPlus, IcoTrash } from '../../components/icons';
 import './admin.css';
 
 interface Invite { code: string; created_at: string; max_uses: number; used_count: number; used_by: string[] }
-interface Member { id: number; username: string | null; first_name: string; last_name: string | null; display_name: string | null; photo_url: string | null; role: Role }
+interface Member { id: number; username: string | null; first_name: string; last_name: string | null; display_name: string | null; real_name?: string | null; photo_url: string | null; role: Role }
 
 function Invites({ showMsg }: Pick<PageProps, 'showMsg'>) {
     const [list, setList] = useState<Invite[]>([]);
@@ -79,7 +79,7 @@ function Members({ me, showMsg }: Pick<PageProps, 'me' | 'showMsg'>) {
             {list.map(m => (
                 <div className="member-row" key={m.id}>
                     <Avatar name={displayName(m)} photo={m.photo_url} />
-                    <div className="grow"><div className="nm" style={{ fontWeight: 500 }}>{displayName(m)}</div>{m.username && <div className="hint nm">@{m.username}</div>}</div>
+                    <div className="grow"><div className="nm" style={{ fontWeight: 500 }}>{displayName(m)}</div>{(m.real_name || m.username) && <div className="hint nm">{[m.real_name, m.username && `@${m.username}`].filter(Boolean).join(' · ')}</div>}</div>
                     {m.role === 'owner' ? <span className="chip chip--primary">Главный админ</span> : (
                         <>
                             {me.role === 'owner'
@@ -87,11 +87,12 @@ function Members({ me, showMsg }: Pick<PageProps, 'me' | 'showMsg'>) {
                                     <select className="field role-select" aria-label={`Роль: ${displayName(m)}`} value={m.role}
                                             onChange={e => setRole(m, e.target.value as Role)}>
                                         <option value="student">Студент</option>
+                                        <option value="moderator">Модератор</option>
                                         <option value="admin">Админ</option>
                                     </select>
                                 )
-                                : <span className={`chip ${m.role === 'admin' ? 'chip--primary' : ''}`}>{m.role === 'admin' ? 'Админ' : 'Студент'}</span>}
-                            {(m.role === 'student' || me.role === 'owner') && <button className="btn-icon btn-icon--danger" aria-label="Удалить участника" onClick={() => remove(m)}><IcoTrash /></button>}
+                                : <span className={`chip ${m.role === 'admin' ? 'chip--primary' : ''}`}>{m.role === 'admin' ? 'Админ' : m.role === 'moderator' ? 'Модератор' : 'Студент'}</span>}
+                            {(m.role !== 'admin' || me.role === 'owner') && <button className="btn-icon btn-icon--danger" aria-label="Удалить участника" onClick={() => remove(m)}><IcoTrash /></button>}
                         </>
                     )}
                 </div>

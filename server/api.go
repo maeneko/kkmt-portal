@@ -23,7 +23,7 @@ const (
 	// Поля пользователя, которые видны всем (без tg_id и инвайт-кода).
 	userCols = "id, username, photo_url, display_name, first_name, last_name, bio, role"
 	// Порядок в списках: главный админ, админы, студенты; внутри — по имени.
-	userOrder = "ORDER BY FIELD(role,'owner','admin','student'), first_name"
+	userOrder = "ORDER BY FIELD(role,'owner','admin','moderator','student'), first_name"
 
 	maxFileMB    = 20 // максимальный размер одного файла к домашнему заданию
 	filesPerPair = 5  // сколько файлов можно прикрепить к одной паре
@@ -45,10 +45,18 @@ func validDate(s string) bool { _, err := time.Parse("2006-01-02", s); return er
 
 // ---------- Профиль и пользователи ----------
 
+// colsFor — поля пользователей для запрашивающего: модераторам и выше ещё и реальное имя.
+func colsFor(r *http.Request) string {
+	if userOf(r).Role == "student" {
+		return userCols
+	}
+	return userCols + ", real_name"
+}
+
 // listUsers — список всех пользователей (одноклассники в профиле и таблица в админке).
 func listUsers(w http.ResponseWriter, r *http.Request) {
 	users := []User{}
-	if !serverErr(w, db.Select(&users, "SELECT "+userCols+" FROM users "+userOrder)) {
+	if !serverErr(w, db.Select(&users, "SELECT "+colsFor(r)+" FROM users "+userOrder)) {
 		writeJSON(w, 200, users)
 	}
 }
@@ -56,7 +64,7 @@ func listUsers(w http.ResponseWriter, r *http.Request) {
 // getUser — профиль одного пользователя.
 func getUser(w http.ResponseWriter, r *http.Request) {
 	var u User
-	err := db.Get(&u, "SELECT "+userCols+" FROM users WHERE id = ?", r.PathValue("id"))
+	err := db.Get(&u, "SELECT "+colsFor(r)+" FROM users WHERE id = ?", r.PathValue("id"))
 	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "Не найдено")
 	} else if !serverErr(w, err) {
@@ -64,15 +72,23 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// updateMe меняет отображаемое имя (до 32 символов); пустое — вернуть имя из Telegram.
+// updateMe меняет присланные поля: отображаемое имя (до 32 символов; пустое — имя из Telegram)
+// и реальное имя «Фамилия Имя» (до 64 символов).
 func updateMe(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		DisplayName string `json:"display_name"`
+		DisplayName *string `json:"display_name"`
+		RealName    *string `json:"real_name"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	_, err := db.Exec("UPDATE users SET display_name = ? WHERE id = ?", nullable(clip(in.DisplayName, 32)), userOf(r).ID)
+	var err error
+	if in.DisplayName != nil {
+		_, err = db.Exec("UPDATE users SET display_name = ? WHERE id = ?", nullable(clip(*in.DisplayName, 32)), userOf(r).ID)
+	}
+	if err == nil && in.RealName != nil {
+		_, err = db.Exec("UPDATE users SET real_name = ? WHERE id = ?", nullable(clip(*in.RealName, 64)), userOf(r).ID)
+	}
 	if !serverErr(w, err) {
 		respondOK(w)
 	}
@@ -185,13 +201,26 @@ type Lesson struct {
 	Teacher string `db:"teacher" json:"teacher"`
 	Room    string `db:"room" json:"room"`
 	Kind    string `db:"kind" json:"kind"`
+	Remote  bool   `db:"remote" json:"remote"`
 }
 
-// schedule отдаёт всё расписание: пары, звонки (обычные и субботние) и дату начала семестра (от неё считается чётность недели).
+// LessonChange — замена пары на конкретную дату; пустой Subject — пары нет.
+type LessonChange struct {
+	Date    string `db:"date" json:"date"`
+	PairNo  int    `db:"pair_no" json:"pair_no"`
+	Subject string `db:"subject" json:"subject"`
+	Teacher string `db:"teacher" json:"teacher"`
+	Room    string `db:"room" json:"room"`
+	Kind    string `db:"kind" json:"kind"`
+	Remote  bool   `db:"remote" json:"remote"`
+}
+
+// schedule отдаёт всё расписание: пары, замены (с прошлой недели), звонки (обычные и субботние) и дату начала семестра (от неё считается чётность недели).
 func schedule(w http.ResponseWriter, r *http.Request) {
-	lessons, times, satTimes, sem := []Lesson{}, []PairTime{}, []PairTime{}, []string{}
+	lessons, changes, times, satTimes, sem := []Lesson{}, []LessonChange{}, []PairTime{}, []PairTime{}, []string{}
 	err := errors.Join(
-		db.Select(&lessons, "SELECT id, weekday, pair_no, parity, subject, teacher, room, kind FROM lessons ORDER BY weekday, pair_no"),
+		db.Select(&lessons, "SELECT id, weekday, pair_no, parity, subject, teacher, room, kind, remote FROM lessons ORDER BY weekday, pair_no"),
+		db.Select(&changes, "SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, subject, teacher, room, kind, remote FROM lesson_changes WHERE date >= CURDATE() - INTERVAL 7 DAY"),
 		db.Select(&times, "SELECT pair_no, start_time, end_time FROM pair_times ORDER BY pair_no"),
 		db.Select(&satTimes, "SELECT pair_no, start_time, end_time FROM pair_times_sat ORDER BY pair_no"),
 		db.Select(&sem, "SELECT v FROM settings WHERE k = 'semester_start'"),
@@ -203,7 +232,7 @@ func schedule(w http.ResponseWriter, r *http.Request) {
 	if len(sem) > 0 {
 		semesterStart = &sem[0]
 	}
-	writeJSON(w, 200, map[string]any{"lessons": lessons, "times": times, "satTimes": satTimes, "semesterStart": semesterStart})
+	writeJSON(w, 200, map[string]any{"lessons": lessons, "changes": changes, "times": times, "satTimes": satTimes, "semesterStart": semesterStart})
 }
 
 // ---------- Домашние задания и файлы ----------
@@ -213,6 +242,7 @@ type HomeworkFile struct {
 	ID   int64  `db:"id" json:"id"`
 	Name string `db:"name" json:"name"`
 	Size int64  `db:"size" json:"size"`
+	Note string `db:"note" json:"note"` // что именно сделать в файле
 }
 
 // homeworkItem — домашнее задание и файлы одной пары на одну дату.
@@ -242,7 +272,7 @@ func listHomework(w http.ResponseWriter, r *http.Request) {
 	}
 	err := errors.Join(
 		db.Select(&hw, "SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, body FROM homework WHERE date BETWEEN ? AND ?", from, to),
-		db.Select(&files, "SELECT id, DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, original_name AS name, size FROM homework_files WHERE date BETWEEN ? AND ? ORDER BY id", from, to),
+		db.Select(&files, "SELECT id, DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, original_name AS name, size, note FROM homework_files WHERE date BETWEEN ? AND ? ORDER BY id", from, to),
 	)
 	if serverErr(w, err) {
 		return
@@ -375,7 +405,11 @@ func deleteFile(w http.ResponseWriter, r *http.Request) {
 	err := db.Get(&stored, "SELECT stored_name FROM homework_files WHERE id = ?", r.PathValue("id"))
 	if err == nil {
 		if _, err = db.Exec("DELETE FROM homework_files WHERE id = ?", r.PathValue("id")); err == nil {
-			os.Remove(filepath.Join(uploadDir, stored))
+			// один файл на диске может быть прикреплён к нескольким парам — удаляем, когда ссылок не осталось
+			var left int
+			if err = db.Get(&left, "SELECT COUNT(*) FROM homework_files WHERE stored_name = ?", stored); err == nil && left == 0 {
+				os.Remove(filepath.Join(uploadDir, stored))
+			}
 		}
 	} else if errors.Is(err, sql.ErrNoRows) {
 		err = nil
@@ -397,6 +431,60 @@ func encodeURIComponent(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// saveFileNote сохраняет, что именно сделать в прикреплённом файле.
+func saveFileNote(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Note string `json:"note"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	_, err := db.Exec("UPDATE homework_files SET note = ? WHERE id = ?", clip(in.Note, 500), r.PathValue("id"))
+	if !serverErr(w, err) {
+		respondOK(w)
+	}
+}
+
+// attachFile прикрепляет уже загруженный файл к другой паре: новая запись ссылается на тот же файл на диске.
+func attachFile(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Date   string `json:"date"`
+		PairNo int    `json:"pair_no"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if !validDate(in.Date) || in.PairNo < 1 || in.PairNo > 10 {
+		fail(w, 400, "Некорректные параметры")
+		return
+	}
+	var f HomeworkFile
+	var stored string
+	err := db.QueryRow("SELECT original_name, size, stored_name FROM homework_files WHERE id = ?", r.PathValue("id")).Scan(&f.Name, &f.Size, &stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		fail(w, 404, "Файл не найден")
+		return
+	}
+	var count int
+	if err == nil {
+		err = db.Get(&count, "SELECT COUNT(*) FROM homework_files WHERE date = ? AND pair_no = ?", in.Date, in.PairNo)
+	}
+	if serverErr(w, err) {
+		return
+	}
+	if count >= filesPerPair {
+		fail(w, 400, fmt.Sprintf("Не больше %d файлов на пару", filesPerPair))
+		return
+	}
+	res, err := db.Exec("INSERT INTO homework_files (date, pair_no, original_name, stored_name, size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)",
+		in.Date, in.PairNo, f.Name, stored, f.Size, userOf(r).ID)
+	if serverErr(w, err) {
+		return
+	}
+	f.ID, _ = res.LastInsertId()
+	writeJSON(w, 200, f)
 }
 
 // ---------- Админка ----------
@@ -496,7 +584,7 @@ func targetUser(w http.ResponseWriter, r *http.Request) (id int64, role string, 
 	return t.ID, t.Role, true
 }
 
-// setRole назначает или снимает админа; только главный админ, самого главного менять нельзя.
+// setRole назначает роль (студент, модератор, админ); только главный админ, самого главного менять нельзя.
 func setRole(w http.ResponseWriter, r *http.Request) {
 	if userOf(r).Role != "owner" {
 		fail(w, 403, "Только главный админ")
@@ -508,7 +596,7 @@ func setRole(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Role != "student" && in.Role != "admin" {
+	if in.Role != "student" && in.Role != "moderator" && in.Role != "admin" {
 		fail(w, 400, "role")
 		return
 	}
@@ -577,8 +665,56 @@ func saveSchedule(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			break
 		}
-		_, err = tx.Exec("INSERT INTO lessons (weekday, pair_no, parity, subject, teacher, room, kind) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			l.Weekday, l.PairNo, l.Parity, l.Subject, l.Teacher, l.Room, l.Kind)
+		_, err = tx.Exec("INSERT INTO lessons (weekday, pair_no, parity, subject, teacher, room, kind, remote) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			l.Weekday, l.PairNo, l.Parity, l.Subject, l.Teacher, l.Room, l.Kind, l.Remote)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if !serverErr(w, err) {
+		respondOK(w)
+	}
+}
+
+// saveWeek сохраняет замены на неделю [from, to] целиком: старые замены в диапазоне удаляются, присланные записываются.
+// Прошедшие дни не трогаются: их замены не удаляются, присланные на них — пропускаются.
+func saveWeek(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		From    string         `json:"from"`
+		To      string         `json:"to"`
+		Changes []LessonChange `json:"changes"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if !validDate(in.From) || !validDate(in.To) || len(in.Changes) > 100 {
+		fail(w, 400, "Некорректная неделя")
+		return
+	}
+	for i, c := range in.Changes {
+		if !validDate(c.Date) || c.Date < in.From || c.Date > in.To || c.PairNo < 1 || c.PairNo > 10 {
+			fail(w, 400, "Некорректная пара")
+			return
+		}
+		c.Subject, c.Teacher, c.Room, c.Kind = clip(c.Subject, 200), clip(c.Teacher, 200), clip(c.Room, 50), clip(c.Kind, 30)
+		in.Changes[i] = c
+	}
+	tx, err := db.Beginx()
+	if serverErr(w, err) {
+		return
+	}
+	defer tx.Rollback()
+	today := time.Now().Format("2006-01-02")
+	_, err = tx.Exec("DELETE FROM lesson_changes WHERE date BETWEEN ? AND ? AND date >= ?", in.From, in.To, today)
+	for _, c := range in.Changes {
+		if err != nil {
+			break
+		}
+		if c.Date < today {
+			continue
+		}
+		_, err = tx.Exec("REPLACE INTO lesson_changes (date, pair_no, subject, teacher, room, kind, remote) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			c.Date, c.PairNo, c.Subject, c.Teacher, c.Room, c.Kind, c.Remote)
 	}
 	if err == nil {
 		err = tx.Commit()

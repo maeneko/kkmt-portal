@@ -43,8 +43,9 @@ var schema = []string{
         last_name VARCHAR(128) NULL,
         photo_url VARCHAR(512) NULL,
         display_name VARCHAR(64) NULL,
+        real_name VARCHAR(64) NULL,
         bio VARCHAR(500) NOT NULL DEFAULT '',
-        role ENUM('student','admin','owner') NOT NULL DEFAULT 'student',
+        role ENUM('student','admin','owner','moderator') NOT NULL DEFAULT 'student',
         invite_code CHAR(6) NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         last_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -94,7 +95,8 @@ var schema = []string{
         subject VARCHAR(200) NOT NULL,
         teacher VARCHAR(200) NOT NULL DEFAULT '',
         room VARCHAR(50) NOT NULL DEFAULT '',
-        kind VARCHAR(30) NOT NULL DEFAULT ''
+        kind VARCHAR(30) NOT NULL DEFAULT '',
+        remote TINYINT(1) NOT NULL DEFAULT 0
     ) CHARACTER SET utf8mb4`,
 	// Дз привязано к дате и номеру пары: пересохранение расписания (новые id пар) его не теряет
 	`CREATE TABLE IF NOT EXISTS homework (
@@ -117,6 +119,17 @@ var schema = []string{
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_slot (date, pair_no),
         FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+    ) CHARACTER SET utf8mb4`,
+	// Замены пар на конкретную дату (правка «только этой недели»); пустой subject — пары нет
+	`CREATE TABLE IF NOT EXISTS lesson_changes (
+        date DATE NOT NULL,
+        pair_no TINYINT NOT NULL,
+        subject VARCHAR(200) NOT NULL DEFAULT '',
+        teacher VARCHAR(200) NOT NULL DEFAULT '',
+        room VARCHAR(50) NOT NULL DEFAULT '',
+        kind VARCHAR(30) NOT NULL DEFAULT '',
+        remote TINYINT(1) NOT NULL DEFAULT 0,
+        PRIMARY KEY (date, pair_no)
     ) CHARACTER SET utf8mb4`,
 	`CREATE TABLE IF NOT EXISTS settings (
         k VARCHAR(50) PRIMARY KEY,
@@ -159,6 +172,23 @@ func migrate(conn *sqlx.DB) error {
 		}
 	}
 	if _, err := addColumn("users", "invite_code", "CHAR(6) NULL"); err != nil {
+		return err
+	}
+	if _, err := addColumn("users", "real_name", "VARCHAR(64) NULL"); err != nil {
+		return err
+	}
+	// что именно сделать в прикреплённом файле
+	if _, err := addColumn("homework_files", "note", "VARCHAR(500) NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	// пара дистанционно: и в постоянном расписании, и в заменах
+	for _, t := range []string{"lessons", "lesson_changes"} {
+		if _, err := addColumn(t, "remote", "TINYINT(1) NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
+	}
+	// роль moderator добавлена позже; новое значение в конце ENUM — ALTER без перестройки таблицы
+	if _, err := conn.Exec("ALTER TABLE users MODIFY role ENUM('student','admin','owner','moderator') NOT NULL DEFAULT 'student'"); err != nil {
 		return err
 	}
 	// лента без лайков и комментариев: убираем их таблицы, если остались от прежних версий

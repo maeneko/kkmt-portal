@@ -21,6 +21,9 @@ html, body, #root { height: 100%; }
     --error-bg:   #ffdad6; --error-text:   #410002; --error-dot:   #ba1a1a;
     --tertiary-container:    #f2daff;
     --on-tertiary-container: #251431;
+    /* жёлтый тональный (MD3 custom color) — дистанционные пары */
+    --remote-container:    #ffe08b;
+    --on-remote-container: #241a00;
 
     --danger-border: #e8bcb7;
     --danger-text:   #ba1a1a;
@@ -64,6 +67,8 @@ html, body, #root { height: 100%; }
     --error-bg:   #5c1414; --error-text:   #ffb4ab; --error-dot:   #ff5449;
     --tertiary-container:    #523e5f;
     --on-tertiary-container: #f2daff;
+    --remote-container:    #574500;
+    --on-remote-container: #ffe08b;
 
     --danger-border: #6e3b37;
     --danger-text:   #ffb4ab;
@@ -86,7 +91,7 @@ body {
     transition: background 0.2s ease, color 0.2s ease;
 }
 
-.app { min-height: 100vh; display: flex; flex-direction: column; position: relative; }
+.app { min-height: 100vh; min-height: 100dvh; overflow-x: clip; display: flex; flex-direction: column; position: relative; }
 .logo-name { font-size: 17px; font-weight: 500; color: var(--on-surface); }
 .muted { color: var(--neutral-text); }
 /* Имена/ники: одной строкой с многоточием, не растягивают карточку (и не ломают страницу) */
@@ -194,6 +199,7 @@ select.field { appearance: none; padding-right: 12px; }
 .chip--primary { background: var(--primary-container); color: var(--on-primary-container); }
 .chip--online  { background: var(--success-bg); color: var(--success-text); }
 .chip--tertiary { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+.chip--remote { background: var(--remote-container); color: var(--on-remote-container); }
 .chip--error { background: var(--error-bg); color: var(--error-text); }
 
 .avatar {
@@ -231,7 +237,10 @@ select.field { appearance: none; padding-right: 12px; }
 .brand-capsule {
     display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 20px 0 10px; min-width: 0;
     background: var(--surface-container); border-radius: var(--r-pill);
+    border: none; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s;
 }
+.brand-capsule:hover { background: var(--surface-hi); }
 .brand-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .brand-name { font-size: 15px; font-weight: 500; line-height: 1.2; white-space: nowrap; }
 .brand-sub { font-size: 12px; line-height: 1.2; color: var(--neutral-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -267,16 +276,23 @@ select.field { appearance: none; padding-right: 12px; }
     flex: 1; padding: 16px 24px 32px; display: flex; flex-direction: column; gap: 20px;
     min-width: 0; width: 100%; max-width: 1200px; margin: 0 auto;
 }
-.page-title { font-size: 20px; font-weight: 500; animation: title-in 320ms var(--ease-in) 60ms both; }
+.page-title { position: relative; overflow: hidden; font-size: 20px; font-weight: 500; line-height: 1.4; }
+/* смена вкладки: заголовок прокручивается (--dir: 1 — снизу вверх, -1 — сверху вниз) */
+.pt-in { display: block; animation: pt-in 280ms cubic-bezier(0.2, 0, 0, 1) 40ms both; }
+.pt-out { position: absolute; left: 0; top: 0; white-space: nowrap; animation: pt-out 160ms cubic-bezier(0.3, 0, 1, 1) both; }
+@keyframes pt-in { from { transform: translateY(calc(45% * var(--dir, 1))); opacity: 0; } }
+@keyframes pt-out { to { transform: translateY(calc(-35% * var(--dir, 1))); opacity: 0; } }
 
 /* MD3 navigation bar — только на телефоне */
 .bottom-nav { display: none; }
 .bn-item {
-    display: flex; flex: 1; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; max-width: 120px;
+    display: flex; flex: 1; flex-direction: column; align-items: center; gap: 4px; min-width: 0; max-width: 120px;
     padding: 0; border: 0; background: transparent; color: var(--label);
     font: inherit; font-size: 12px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
 }
-.bn-indicator { display: grid; place-items: center; width: 64px; height: 32px; border-radius: var(--r-pill); transition: background 0.2s var(--ease-std); }
+.bn-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* при 5–6 вкладках таблетка сужается, иначе панель шире экрана и уезжает */
+.bn-indicator { display: grid; place-items: center; width: min(64px, 100%); height: 32px; border-radius: var(--r-pill); transition: background 0.2s var(--ease-std); }
 @media (hover: hover) { .bn-item:not([aria-current='page']):hover .bn-indicator { background: var(--state-primary); } }
 .bn-item[aria-current='page'] { color: var(--on-surface); font-weight: 500; }
 .bn-item[aria-current='page'] .bn-indicator { background: var(--primary-container); color: var(--on-primary-container); }
@@ -288,13 +304,19 @@ select.field { appearance: none; padding-right: 12px; }
     .main { padding: 8px 16px 104px; gap: 12px; max-width: none; }
     .card { padding: 16px; }
     .bottom-nav {
-        display: flex; justify-content: center; gap: 8px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 200;
-        padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); background: var(--surface-container);
+        display: flex; justify-content: center; gap: 4px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 200;
+        padding: 12px 8px calc(16px + env(safe-area-inset-bottom)); background: var(--surface-container);
     }
     .snackbar { bottom: 104px; }
 }
 .only-mobile { display: none; }
 @media (max-width: 640px) { .only-mobile { display: inline-flex; } }
+/* Телефон: поля от 16px — иначе браузер приближает страницу при фокусе и не отдаляет обратно,
+   и закреплённые нижняя панель и FAB уезжают за край. Двойной тап тоже не приближает. */
+@media (max-width: 640px) {
+    .app .main .field { font-size: 16px; }
+    body { touch-action: manipulation; }
+}
 
 .snackbar {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 500;

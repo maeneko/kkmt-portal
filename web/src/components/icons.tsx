@@ -64,7 +64,18 @@ export const IcoClip = () => (
 export const IcoDownload = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" {...S}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 );
+export const IcoFolder = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...S}><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+);
+
+export const IcoEdit = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...S}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+);
+
+export const IcoUndo = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...S}><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+);
 
 export const ICONS: Record<string, () => JSX.Element> = {
-    feed: IcoFeed, calendar: IcoCalendar, person: IcoPerson, shield: IcoShield,
+    feed: IcoFeed, calendar: IcoCalendar, person: IcoPerson, shield: IcoShield, folder: IcoFolder,
 };

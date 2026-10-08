@@ -26,7 +26,7 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./server
       - run: go test ./server
-      - run: go build -o dist/kkmt ./server
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/kkmt ./server
 
       # Фронтенд (React + Vite)
       - uses: actions/setup-node@v4
@@ -42,6 +42,13 @@ jobs:
           test -f dist/public/index.html
           test -f dist/kkmt
 
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: dist
+          path: dist
+          retention-days: 3
+
   docker:
     name: Docker-образ собирается
     runs-on: ubuntu-latest
@@ -56,3 +63,35 @@ jobs:
           tags: kkmt:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Выкатка на сервер
+    runs-on: ubuntu-latest
+    needs: [check, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: SSH-ключ
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+          printf 'Host *\n  Port %s\n' "${{ secrets.SSH_PORT || 22 }}" > ~/.ssh/config
+
+      # .env и uploads лежат на сервере и не трогаются
+      - name: Копирование и перезапуск
+        env:
+          HOST: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+          DIR: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          chmod +x dist/kkmt
+          rsync -az --delete dist/ "$HOST:$DIR/dist/"
+          rsync -az Dockerfile.runtime Dockerfile.runtime.dockerignore docker-compose.server.yml "$HOST:$DIR/"
+          ssh "$HOST" "cd '$DIR' && docker compose -f docker-compose.server.yml up -d --build && docker image prune -f"

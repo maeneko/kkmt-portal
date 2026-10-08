@@ -8,7 +8,8 @@
     "dev": "concurrently -n api,web -c magenta,cyan \"go run ./server\" \"vite\"",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "update-jwks": "node scripts/update-jwks.mjs"
+    "update-jwks": "node scripts/update-jwks.mjs",
+    "mock-files": "node scripts/mock-files.mjs"
   },
   "dependencies": {
     "react": "^18.3.0",

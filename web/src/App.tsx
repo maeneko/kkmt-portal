@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
-import { api, isAdmin, type Me } from './lib/api';
+import { api, isAdmin, type Focus, type Me } from './lib/api';
 import { IcoMoon, IcoSun } from './components/icons';
 import Logo from './components/Logo';
 import BottomNav from './components/BottomNav';
@@ -16,6 +16,8 @@ export default function App() {
     const [ready, setReady] = useState(false);
     const [group, setGroup] = useState('KKMT');
     const [activeTab, setActiveTab] = useState(TABS[0].id);
+    const [focus, setFocus] = useState<Focus | null>(null);
+    const goTo = useCallback((id: string, f?: Focus) => { setFocus(f ?? null); setActiveTab(id); window.scrollTo(0, 0); }, []);
     const [scrolled, setScrolled] = useState(false);
     const [msg, setMsg] = useState('');
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -56,6 +58,15 @@ export default function App() {
 
     const tabs = TABS.filter(t => !t.adminOnly || (me && isAdmin(me)));
     const tab = tabs.find(t => t.id === activeTab) ?? tabs[0];
+    // Заголовок «прокручивается» при смене вкладки: старый уезжает, новый въезжает;
+    // вкладка правее — снизу вверх, левее — сверху вниз
+    const lastTab = useRef(tab);
+    const titleFrom = useRef<{ label: string; dir: number } | null>(null);
+    if (lastTab.current.id !== tab.id) {
+        const was = tabs.findIndex(t => t.id === lastTab.current.id);
+        titleFrom.current = { label: lastTab.current.label, dir: tabs.indexOf(tab) >= was ? 1 : -1 };
+        lastTab.current = tab;
+    }
 
     return (
         <div className="app">
@@ -71,28 +82,31 @@ export default function App() {
             ) : (
                 <>
                     <header className={`app-header${scrolled ? ' app-header--scrolled' : ''}`}>
-                        <div className="brand-capsule">
+                        <button className="brand-capsule" title="В ленту" onClick={() => goTo('feed')}>
                             <Logo size={28} />
-                            <div className="brand-text">
+                            <span className="brand-text">
                                 <span className="brand-name">{group}</span>
                                 <span className="brand-sub">Портал группы</span>
-                            </div>
-                        </div>
+                            </span>
+                        </button>
                         <div className="header-right">
                             <button className="theme-toggle theme-toggle--inline" aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
                                     onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}>
                                 {theme === 'dark' ? <IcoSun /> : <IcoMoon />}
                             </button>
-                            <TabMenu tabs={tabs} active={tab} onNavigate={setActiveTab} onLogout={logout} />
+                            <TabMenu tabs={tabs} active={tab} onNavigate={goTo} onLogout={logout} />
                         </div>
                     </header>
 
                     <main className="main">
-                        <h2 className="page-title" key={`title-${tab.id}`}>{tab.label}</h2>
-                        <tab.Page key={`page-${tab.id}`} me={me} reloadMe={reloadMe} showMsg={showMsg} logout={logout} />
+                        <h2 className="page-title" key={`title-${tab.id}`} style={{ '--dir': titleFrom.current?.dir ?? 1 } as React.CSSProperties}>
+                            {titleFrom.current && <span className="pt-out" aria-hidden>{titleFrom.current.label}</span>}
+                            <span className="pt-in">{tab.label}</span>
+                        </h2>
+                        <tab.Page key={`page-${tab.id}`} me={me} reloadMe={reloadMe} showMsg={showMsg} logout={logout} goTo={goTo} focus={focus} />
                     </main>
 
-                    <BottomNav tabs={tabs} active={tab.id} onNavigate={setActiveTab} />
+                    <BottomNav tabs={tabs} active={tab.id} onNavigate={goTo} />
                 </>
             )}
             {msg && <div className="snackbar" role="status">{msg}</div>}

@@ -39,6 +39,7 @@ type User struct {
 	Username    *string `db:"username" json:"username"`
 	PhotoURL    *string `db:"photo_url" json:"photo_url"`
 	DisplayName *string `db:"display_name" json:"display_name"`
+	RealName    *string `db:"real_name" json:"real_name,omitempty"` // фамилия и имя: видят только модераторы и выше (и сам пользователь)
 	FirstName   string  `db:"first_name" json:"first_name"`
 	LastName    *string `db:"last_name" json:"last_name"`
 	Bio         string  `db:"bio" json:"bio"`
@@ -85,7 +86,7 @@ func sessionUser(r *http.Request) *User {
 		return nil
 	}
 	var u User
-	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.first_name, u.last_name, u.bio, u.role
+	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.real_name, u.first_name, u.last_name, u.bio, u.role
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > NOW()`, sha(c.Value))
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -107,10 +108,21 @@ func authed(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// admin пропускает только админов и главного админа (студентам — 403).
-func admin(next http.HandlerFunc) http.HandlerFunc {
+// moderator пропускает модераторов, админов и главного админа (студентам — 403).
+func moderator(next http.HandlerFunc) http.HandlerFunc {
 	return authed(func(w http.ResponseWriter, r *http.Request) {
 		if userOf(r).Role == "student" {
+			fail(w, 403, "Только для модераторов")
+			return
+		}
+		next(w, r)
+	})
+}
+
+// admin пропускает только админов и главного админа (студентам и модераторам — 403).
+func admin(next http.HandlerFunc) http.HandlerFunc {
+	return authed(func(w http.ResponseWriter, r *http.Request) {
+		if role := userOf(r).Role; role != "admin" && role != "owner" {
 			fail(w, 403, "Только для админов")
 			return
 		}
@@ -190,6 +202,7 @@ const (
 	loginOK loginResult = iota
 	needInvite
 	badInvite
+	needName // ключ верный, но не введены фамилия и имя
 )
 
 // inviteRe — формат инвайт-ключа: 6 символов 0-9 и A-Z.
@@ -204,7 +217,7 @@ func nullable(s string) *string {
 }
 
 // loginOrRegister: вход или регистрация. Новый пользователь, кроме владельца (OWNER_TG_ID), обязан передать инвайт.
-func loginOrRegister(tg tgData, invite string) (int64, loginResult, error) {
+func loginOrRegister(tg tgData, invite, realName string) (int64, loginResult, error) {
 	tx, err := db.Beginx()
 	if err != nil {
 		return 0, 0, err
@@ -235,13 +248,17 @@ func loginOrRegister(tg tgData, invite string) (int64, loginResult, error) {
 			if err != nil {
 				return 0, 0, err
 			}
+			// новый участник обязательно указывает «Фамилия Имя» (ключ до этого не тратится)
+			if len(strings.Fields(realName)) < 2 {
+				return 0, needName, nil
+			}
 		}
 		role := "student"
 		if isOwner {
 			role, code = "owner", ""
 		}
-		res, err := tx.Exec("INSERT INTO users (tg_id, username, first_name, last_name, photo_url, role, invite_code) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			tg.ID, nullable(tg.Username), tg.FirstName, nullable(tg.LastName), nullable(tg.PhotoURL), role, nullable(code))
+		res, err := tx.Exec("INSERT INTO users (tg_id, username, first_name, last_name, photo_url, real_name, role, invite_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			tg.ID, nullable(tg.Username), tg.FirstName, nullable(tg.LastName), nullable(tg.PhotoURL), nullable(clip(strings.Join(strings.Fields(realName), " "), 64)), role, nullable(code))
 		if err != nil {
 			return 0, 0, err
 		}
@@ -260,8 +277,8 @@ func loginOrRegister(tg tgData, invite string) (int64, loginResult, error) {
 }
 
 // finishLogin: ответ на попытку входа — сессия или просьба о ключе.
-func finishLogin(w http.ResponseWriter, tg tgData, invite string) {
-	id, res, err := loginOrRegister(tg, invite)
+func finishLogin(w http.ResponseWriter, tg tgData, invite, realName string) {
+	id, res, err := loginOrRegister(tg, invite, realName)
 	if serverErr(w, err) {
 		return
 	}
@@ -270,6 +287,8 @@ func finishLogin(w http.ResponseWriter, tg tgData, invite string) {
 		writeJSON(w, 403, map[string]any{"needInvite": true, "error": "Нужен инвайт-ключ"})
 	case badInvite:
 		writeJSON(w, 403, map[string]any{"needInvite": true, "error": "Неверный или использованный ключ"})
+	case needName:
+		writeJSON(w, 403, map[string]any{"needName": true, "error": "Введите фамилию и имя"})
 	default:
 		if !serverErr(w, startSession(w, id)) {
 			respondOK(w)
@@ -279,8 +298,9 @@ func finishLogin(w http.ResponseWriter, tg tgData, invite string) {
 
 func telegramLogin(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		IDToken string `json:"idToken"`
-		Invite  string `json:"invite"`
+		IDToken  string `json:"idToken"`
+		Invite   string `json:"invite"`
+		RealName string `json:"realName"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -295,7 +315,7 @@ func telegramLogin(w http.ResponseWriter, r *http.Request) {
 	if first == "" {
 		first = c.Name
 	}
-	finishLogin(w, tgData{c.ID, first, c.FamilyName, c.Username, c.Picture}, in.Invite)
+	finishLogin(w, tgData{c.ID, first, c.FamilyName, c.Username, c.Picture}, in.Invite, in.RealName)
 }
 
 // Только для локальной разработки (DEV_LOGIN=1): вход без Telegram.
@@ -309,6 +329,7 @@ func devLogin(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Name     string `json:"name"`
 		Invite   string `json:"invite"`
+		RealName string `json:"realName"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -325,7 +346,7 @@ func devLogin(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = nick
 	}
-	finishLogin(w, tgData{ID: in.TgID, FirstName: name, Username: nick}, in.Invite)
+	finishLogin(w, tgData{ID: in.TgID, FirstName: name, Username: nick}, in.Invite, in.RealName)
 }
 
 // ---------- Telegram: id_token (OpenID Connect) ----------
