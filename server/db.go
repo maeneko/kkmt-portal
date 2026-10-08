@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"time"
@@ -208,6 +210,19 @@ func migrate(conn *sqlx.DB) error {
 			}
 		}
 	}
-	_, err = conn.Exec("INSERT IGNORE INTO settings (k, v) VALUES ('semester_start', ?)", time.Now().UTC().Format("2006-01-02"))
+	if _, err = conn.Exec("INSERT IGNORE INTO settings (k, v) VALUES ('semester_start', ?)", time.Now().UTC().Format("2006-01-02")); err != nil {
+		return err
+	}
+	// ключ подписи nonce хранится в базе: после перезапуска (деплоя) уже открытые страницы входа остаются рабочими
+	key := make([]byte, 32)
+	rand.Read(key)
+	if _, err = conn.Exec("INSERT IGNORE INTO settings (k, v) VALUES ('nonce_key', ?)", hex.EncodeToString(key)); err != nil {
+		return err
+	}
+	var stored string
+	if err = conn.Get(&stored, "SELECT v FROM settings WHERE k = 'nonce_key'"); err != nil {
+		return err
+	}
+	nonceKey, err = hex.DecodeString(stored)
 	return err
 }

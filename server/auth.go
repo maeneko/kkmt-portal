@@ -414,7 +414,7 @@ func verifyIDToken(token string) (*tgClaims, error) {
 		return nil, err
 	}
 	if !checkNonce(c.Nonce) {
-		return nil, errors.New("nonce")
+		return nil, fmt.Errorf("nonce не подходит или истёк (%d символов)", len(c.Nonce))
 	}
 	if id, err := c.ID.Int64(); err != nil || id <= 0 {
 		return nil, errors.New("нет id (нужен scope profile)")
@@ -423,7 +423,8 @@ func verifyIDToken(token string) (*tgClaims, error) {
 }
 
 // nonce без хранения состояния: срок.случайное.hmac. Ключ случайный на время жизни процесса.
-var nonceKey = func() []byte { b := make([]byte, 32); rand.Read(b); return b }()
+// Ключ задаётся при миграции (из таблицы settings), чтобы переживать перезапуски.
+var nonceKey []byte
 
 func nonceMAC(body string) string {
 	m := hmac.New(sha256.New, nonceKey)
