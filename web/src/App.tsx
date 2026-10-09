@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import './App.css';
-import { api, isAdmin, isModerator, type Focus, type Me } from './lib/api';
+import { api, ApiError, cached, clearCache, getNet, subscribeNet, isAdmin, isModerator, type Focus, type Me, type OpenLesson } from './lib/api';
 import { IcoMoon, IcoShield, IcoSun } from './components/icons';
 import Logo from './components/Logo';
 import BottomNav from './components/BottomNav';
 import TabMenu from './components/TabMenu';
 import Login from './components/Login';
+import LessonDetails from './tabs/schedule/LessonDetails';
 import { TABS } from './tabs';
 
 const THEME_KEY = 'kkmt.theme';
@@ -13,13 +14,29 @@ const ADMIN_KEY = 'kkmt.adminMode';
 
 // Оболочка: сессия, тема, шапка (капсула + выпадающий список вкладок) и переключение вкладок из реестра TABS.
 export default function App() {
-    const [me, setMe] = useState<Me | null>(null);
-    const [ready, setReady] = useState(false);
-    const [group, setGroup] = useState('KKMT');
+    // прошлый ответ /me из кеша: интерфейс рисуется сразу, не дожидаясь сети
+    const [me, setMe] = useState<Me | null>(() => cached<Me>('/me') ?? null);
+    const [ready, setReady] = useState(!!me);
+    const [group, setGroup] = useState(() => cached<{ groupName: string }>('/config')?.groupName ?? 'KKMT');
     const [activeTab, setActiveTab] = useState(TABS[0].id);
     const [focus, setFocus] = useState<Focus | null>(null);
     const goTo = useCallback((id: string, f?: Focus) => { setFocus(f ?? null); setActiveTab(id); window.scrollTo(0, 0); }, []);
+    // открытая пара: подробности рисует App (над любой страницей), но при смене вкладки они закрываются
+    const [lesson, setLesson] = useState<OpenLesson | null>(null);
+    const [lessonRev, setLessonRev] = useState(0);
+    // закрытие плавное: сначала панель уезжает (closing), через 260 мс её убираем совсем
+    const [lessonClosing, setLessonClosing] = useState(false);
+    const closeTimer = useRef<number>();
+    const openLesson = useCallback((l: OpenLesson) => { window.clearTimeout(closeTimer.current); setLessonClosing(false); setLesson(l); }, []);
+    const closeLesson = useCallback(() => {
+        setLessonClosing(true);
+        window.clearTimeout(closeTimer.current);
+        closeTimer.current = window.setTimeout(() => { setLesson(null); setLessonClosing(false); }, 260);
+    }, []);
     const [scrolled, setScrolled] = useState(false);
+    // связь плохая — в шапке метка «данные могут быть устаревшими»; без связи по нажатию страница загружается заново
+    const net = useSyncExternalStore(subscribeNet, getNet);
+    const [retry, setRetry] = useState(0);
     const [msg, setMsg] = useState('');
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
         try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'; } catch { return 'light'; }
@@ -41,7 +58,8 @@ export default function App() {
     }, []);
 
     const reloadMe = useCallback(async () => {
-        try { setMe(await api<Me>('GET', '/me')); } catch { setMe(null); }
+        // без сети остаёмся на данных из кеша; выходим, только если сервер ответил отказом (сессия истекла)
+        try { setMe(await api<Me>('GET', '/me')); } catch (e) { if (e instanceof ApiError) { setMe(null); clearCache(); } }
     }, []);
 
     useEffect(() => { reloadMe().finally(() => setReady(true)); }, [reloadMe]);
@@ -55,6 +73,13 @@ export default function App() {
     useEffect(() => { document.title = group; }, [group]);
 
     useEffect(() => {
+        if (!lesson) return;
+        const key = (e: KeyboardEvent) => { if (e.key === 'Escape') closeLesson(); };
+        document.addEventListener('keydown', key);
+        return () => document.removeEventListener('keydown', key);
+    }, [lesson, closeLesson]);
+
+    useEffect(() => {
         const h = () => setScrolled(window.scrollY > 4);
         window.addEventListener('scroll', h, { passive: true });
         return () => window.removeEventListener('scroll', h);
@@ -62,7 +87,7 @@ export default function App() {
 
     const logout = async () => {
         try { await api('POST', '/auth/logout'); } catch { /* сессия уже могла истечь */ }
-        setMe(null); setActiveTab(TABS[0].id);
+        clearCache(); setMe(null); setLesson(null); setActiveTab(TABS[0].id);
     };
 
     // вкладки и страницы видят пользователя с учётом режима админа; сервер проверяет права по настоящей роли
@@ -71,6 +96,7 @@ export default function App() {
     const tab = tabs.find(t => t.id === activeTab) ?? tabs[0];
     // Заголовок «прокручивается» при смене вкладки: старый уезжает, новый въезжает;
     // вкладка правее — снизу вверх, левее — сверху вниз
+    useEffect(() => { closeLesson(); }, [tab.id, closeLesson]);
     const lastTab = useRef(tab);
     const titleFrom = useRef<{ label: string; dir: number } | null>(null);
     if (lastTab.current.id !== tab.id) {
@@ -101,6 +127,13 @@ export default function App() {
                             </span>
                         </button>
                         <div className="header-right">
+                            {net !== 'ok' && (
+                                <button className={`net-chip${net === 'offline' ? ' net-chip--off' : ''}`} aria-live="polite"
+                                        title={net === 'offline' ? 'Нет связи с сервером: показаны сохранённые данные, они могут быть устаревшими. Нажмите, чтобы повторить' : 'Медленная сеть: пока показаны сохранённые данные, они могут быть устаревшими'}
+                                        onClick={() => { if (net === 'offline') { reloadMe(); setRetry(r => r + 1); } }}>
+                                    <i className="net-dot" />{net === 'offline' ? 'Нет связи' : 'Обновление…'}
+                                </button>
+                            )}
                             {isModerator(me) && (
                                 <button className="theme-toggle theme-toggle--inline" aria-pressed={adminMode} title="Режим админа" aria-label={adminMode ? 'Выключить режим админа' : 'Включить режим админа'}
                                         onClick={toggleAdminMode}>
@@ -111,7 +144,7 @@ export default function App() {
                                     onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}>
                                 {theme === 'dark' ? <IcoSun /> : <IcoMoon />}
                             </button>
-                            <TabMenu tabs={tabs} active={tab} onNavigate={goTo} onLogout={logout} />
+                            <TabMenu tabs={tabs} active={tab} onNavigate={goTo} onLogout={logout} onOpen={closeLesson} />
                         </div>
                     </header>
 
@@ -120,10 +153,12 @@ export default function App() {
                             {titleFrom.current && <span className="pt-out" aria-hidden>{titleFrom.current.label}</span>}
                             <span className="pt-in">{tab.label}</span>
                         </h2>
-                        <tab.Page key={`page-${tab.id}`} me={view ?? me} reloadMe={reloadMe} showMsg={showMsg} logout={logout} goTo={goTo} focus={focus} />
+                        <tab.Page key={`page-${tab.id}-${retry}`} me={view ?? me} reloadMe={reloadMe} showMsg={showMsg} logout={logout} goTo={goTo} focus={focus}
+                                  openLesson={openLesson} closeLesson={closeLesson} lessonOpen={lessonClosing ? null : lesson} lessonRev={lessonRev} />
                     </main>
 
                     <BottomNav tabs={tabs} active={tab.id} onNavigate={goTo} />
+                    {lesson && <LessonDetails sel={lesson} closing={lessonClosing} me={view ?? me} showMsg={showMsg} onClose={closeLesson} onChanged={() => setLessonRev(r => r + 1)} />}
                 </>
             )}
             {msg && <div className="snackbar" role="status">{msg}</div>}

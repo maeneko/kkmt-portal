@@ -175,6 +175,11 @@ select.field { appearance: none; padding-right: 12px; }
     color: var(--primary); transition: background 0.12s; flex-shrink: 0;
 }
 .btn-icon:hover { background: var(--state-primary); }
+/* квадратная кнопка с иконкой (переход в расписание, контакты преподавателя); нажатая — залита основным цветом */
+.btn-sq { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 40px; height: 40px; border: none; border-radius: 10px; background: var(--primary-container); color: var(--on-primary-container); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.12s; }
+.btn-sq:hover { background: color-mix(in srgb, var(--on-primary-container) 12%, var(--primary-container)); }
+.btn-sq[aria-expanded='true'] { background: var(--primary); color: var(--on-primary); }
+.btn-sq svg { width: 18px; height: 18px; }
 .btn-icon--danger { color: var(--danger-text); }
 .btn-icon--danger:hover { background: rgba(186, 26, 26, .10); }
 .btn-icon--neutral { color: var(--neutral-text); }
@@ -246,6 +251,17 @@ select.field { appearance: none; padding-right: 12px; }
 .brand-sub { font-size: 12px; line-height: 1.2; color: var(--neutral-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .header-right { display: flex; align-items: center; gap: 8px; }
 .theme-toggle--inline { position: static; }
+/* связь плохая — данные на экране могут быть устаревшими */
+.net-chip {
+    display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border: 1.5px solid var(--outline-variant); border-radius: 999px;
+    background: transparent; color: var(--neutral-text); font: inherit; font-size: 12px;
+    white-space: nowrap; cursor: default; animation: fade-in 0.2s;
+}
+.net-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--neutral-text); animation: net-pulse 1s ease-in-out infinite alternate; }
+.net-chip--off { cursor: pointer; }
+.net-chip--off:hover { background: var(--surface-container); }
+.net-chip--off .net-dot { background: var(--error-dot); animation: none; opacity: 0.8; }
+@keyframes net-pulse { to { opacity: 0.3; } }
 /* режим админа включён — кнопка залита */
 .theme-toggle[aria-pressed='true'] { background: var(--primary-container); color: var(--on-primary-container); border-color: transparent; }
 

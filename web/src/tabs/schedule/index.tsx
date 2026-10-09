@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, errText, isModerator, type PageProps } from '../../lib/api';
-import { IcoCalendar, IcoClip, IcoEdit, IcoNote, IcoPlus } from '../../components/icons';
-import HomeworkBlock, { SOLUTION, hasContent, type HwItem } from './HomeworkBlock';
-import TeacherInfo from './TeacherInfo';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api, cached, errText, isModerator, type PageProps } from '../../lib/api';
+import { IcoCalendar, IcoClip, IcoEdit, IcoNote } from '../../components/icons';
+import type { HwItem } from './HomeworkBlock';
 import ScheduleEditor from './ScheduleEditor';
 import DatePicker from './DatePicker';
 import './schedule.css';
@@ -43,8 +42,8 @@ const dayMonth = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateStri
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 
-export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
-    const [data, setData] = useState<Data | null>(null);
+export default function Schedule({ me, showMsg, focus, goTo, openLesson: open, closeLesson, lessonOpen, lessonRev }: PageProps) {
+    const [data, setData] = useState<Data | null>(() => cached<Data>('/schedule') ?? null);
     const [view, setViewState] = useState<'grid' | 'cards'>(() => {
         try {
             const v = localStorage.getItem(VIEW_KEY);
@@ -52,15 +51,13 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
         } catch { /* не критично */ }
         return window.matchMedia('(max-width: 640px)').matches ? 'cards' : 'grid';
     });
-    const [sel, setSel] = useState<{ lesson: Lesson; day: string; date: string; anchor: HTMLElement; pop: boolean } | null>(null);
+    // значки «есть ДЗ / файлы» в ячейках недели
     const [hw, setHw] = useState<Record<string, HwItem>>({});
-    // пара («дата|номер»), у которой модератор открыл пустую зону «Эталонное решение»
-    const [solOpen, setSolOpen] = useState('');
-    const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-    const popRef = useRef<HTMLDivElement>(null);
-    // Десктоп — попап рядом с нажатой парой, телефон — окно по центру
-    const openLesson = (lesson: Lesson, day: string, date: string, anchor: HTMLElement) =>
-        setSel({ lesson, day, date, anchor, pop: window.matchMedia('(min-width: 641px)').matches });
+    // Подробности пары открывает App: ПК — панель справа (расписание сдвигается влево), телефон — шторка снизу
+    // повторное нажатие на уже открытую пару закрывает подробности
+    const openLesson = (l: Lesson, day: string, date: string) =>
+        lessonOpen?.date === date && lessonOpen.pair_no === l.pair_no ? closeLesson() : open({ subject: l.subject, teacher: l.teacher, room: l.room, pair_no: l.pair_no, weekday: l.weekday, day, date, pop: window.matchMedia('(min-width: 641px)').matches });
+    const isOpen = (i: number, n: number) => lessonOpen?.date === weekDates[i] && lessonOpen.pair_no === n;
     const setView = (v: 'grid' | 'cards') => {
         setViewState(v);
         try { localStorage.setItem(VIEW_KEY, v); } catch { /* не критично */ }
@@ -79,52 +76,8 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
     const [dir, setDir] = useState<'next' | 'prev'>('next');
     const touch = useRef<{ x: number; y: number } | null>(null);
 
-    useEffect(() => {
-        if (!sel) return;
-        const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setSel(null); };
-        const down = (e: MouseEvent) => {
-            if (sel.pop && !popRef.current?.contains(e.target as Node)) setSel(null);
-        };
-        const close = () => setSel(null);
-        const scroll = (e: Event) => { if (!popRef.current?.contains(e.target as Node)) setSel(null); };
-        document.addEventListener('keydown', key);
-        document.addEventListener('mousedown', down);
-        // Только у десктопного попапа (он привязан к паре и «уезжает» при прокрутке). У телефонного окна по центру
-        // resize и scroll приходят сами (панель браузера, экранная клавиатура, инерция прокрутки) и закрывали его посреди нажатия.
-        if (sel.pop) {
-            window.addEventListener('resize', close);
-            window.addEventListener('scroll', scroll, true);
-        }
-        sel.anchor.classList.add('is-sel');
-        return () => {
-            document.removeEventListener('keydown', key);
-            document.removeEventListener('mousedown', down);
-            window.removeEventListener('resize', close);
-            window.removeEventListener('scroll', scroll, true);
-            sel.anchor.classList.remove('is-sel');
-        };
-    }, [sel]);
-
-    // Позиция попапа: справа от пары, если не хватает места — слева; по вертикали по центру пары, в пределах окна.
-    // Пересчитывается и при смене высоты (редактирование дз, список файлов).
-    useLayoutEffect(() => {
-        const el = popRef.current;
-        if (!sel?.pop || !el) { setPos(null); return; }
-        const place = () => {
-            const r = sel.anchor.getBoundingClientRect();
-            const { width: w, height: h } = el.getBoundingClientRect();
-            const gap = 10;
-            let left = r.right + gap;
-            if (left + w > window.innerWidth - 8) left = r.left - gap - w;
-            left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
-            const top = Math.max(8, Math.min(r.top + r.height / 2 - h / 2, window.innerHeight - h - 8));
-            setPos(p => (p && p.left === left && p.top === top ? p : { left, top }));
-        };
-        place();
-        const ro = new ResizeObserver(place);
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, [sel]);
+    // режим правки расписания — открытая пара не нужна
+    useEffect(() => { if (editing) closeLesson(); }, [editing, closeLesson]);
 
     const load = useCallback(() => { api<Data>('GET', '/schedule').then(setData).catch(e => showMsg(errText(e))); }, [showMsg]);
     useEffect(() => { load(); }, [load]);
@@ -134,11 +87,14 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
         return Array.from({ length: 6 }, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return iso(d); });
     }, [target]);
     const loadHw = useCallback(() => {
-        api<{ items: HwItem[] }>('GET', `/homework?from=${weekDates[0]}&to=${weekDates[5]}`)
-            .then(d => setHw(Object.fromEntries(d.items.map(i => [`${i.date}|${i.pair_no}`, i]))))
-            .catch(() => { /* значки не критичны */ });
+        const url = `/homework?from=${weekDates[0]}&to=${weekDates[5]}`;
+        const show = (d: { items: HwItem[] }) => setHw(Object.fromEntries(d.items.map(i => [`${i.date}|${i.pair_no}`, i])));
+        const c = cached<{ items: HwItem[] }>(url);
+        if (c) show(c);
+        api<{ items: HwItem[] }>('GET', url).then(show).catch(() => { /* значки не критичны */ });
     }, [weekDates]);
-    useEffect(() => { loadHw(); }, [loadHw]);
+    // lessonRev: в подробностях что-то поменяли — обновить значки
+    useEffect(() => { loadHw(); }, [loadHw, lessonRev]);
     // Метки в ячейке: «добавлено дз», «добавлено файлов: N» и «добавлено ссылок: N»
     const hwBadge = (date: string, pair: number) => {
         const h = hw[`${date}|${pair}`];
@@ -233,7 +189,7 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
                                     <div key={name} role="cell" className={`sg-cell${cell.length ? ' sg-cell--full' : ''}${cell.some(l => l.remote) ? ' sg-cell--remote' : ''}${going ? ' sg-cell--now' : ''}${isFocus(i, n) ? ' is-focus' : ''}`}>
                                         {i === 5 && satTimes.size > 0 && ct && <span className="sg-sat-time">{ct.start_time}–{ct.end_time}</span>}
                                         {cell.map(l => (
-                                            <button key={`${l.subject}-${l.parity}`} type="button" className="sg-lesson lesson-hit" onClick={e => openLesson(l, name, weekDates[i], e.currentTarget)}>
+                                            <button key={`${l.subject}-${l.parity}`} type="button" className={`sg-lesson lesson-hit${isOpen(i, n) ? ' is-sel' : ''}`} onClick={() => openLesson(l, name, weekDates[i])}>
                                                 <div className="lesson-subj">{l.subject}</div>
                                                 <div className="sg-meta">{[l.teacher && shortName(l.teacher), l.room && `ауд. ${l.room}`].filter(Boolean).join(' · ')}</div>
                                                 {l.parity !== 'all' && <span className="chip">{l.parity === 'odd' ? 'нечёт.' : 'чёт.'}</span>}
@@ -278,10 +234,10 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
                                 const cell = lessons.filter(l => l.pair_no === n);
                                 const going = isToday && !!t && nowMin >= toMin(t.start_time) && nowMin < toMin(t.end_time);
                                 return (
-                                    <div key={n} className={`lesson${cell.length ? ' lesson--hit' : ' lesson--empty'}${cell.some(l => l.remote) ? ' lesson--remote' : ''}${going ? ' lesson--now' : ''}${isFocus(i, n) ? ' is-focus' : ''}`}
+                                    <div key={n} className={`lesson${cell.length ? ' lesson--hit' : ' lesson--empty'}${cell.some(l => l.remote) ? ' lesson--remote' : ''}${going ? ' lesson--now' : ''}${isFocus(i, n) ? ' is-focus' : ''}${isOpen(i, n) ? ' is-sel' : ''}`}
                                          role={cell.length ? 'button' : undefined} tabIndex={cell.length ? 0 : undefined}
-                                         onClick={e => cell[0] && openLesson(cell[0], name, weekDates[i], e.currentTarget)}
-                                         onKeyDown={e => { if (e.key === 'Enter' && cell[0]) openLesson(cell[0], name, weekDates[i], e.currentTarget); }}>
+                                         onClick={() => cell[0] && openLesson(cell[0], name, weekDates[i])}
+                                         onKeyDown={e => { if (e.key === 'Enter' && cell[0]) openLesson(cell[0], name, weekDates[i]); }}>
                                         <div className="lesson-time"><b>{t?.start_time ?? `${n} п.`}</b>{t?.end_time}</div>
                                         <div className="grow">
                                             {cell.map(l => (
@@ -307,53 +263,6 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
                 );
             })}
             </div>
-
-            {sel && (() => {
-                const l = sel.lesson, t = timeOf(l.weekday - 1, l.pair_no);
-                const rowsInfo: [string, ReactNode][] = [
-                    ['День', `${sel.day}, ${sel.date.slice(8)}.${sel.date.slice(5, 7)}`],
-                    ['Пара', `${l.pair_no}${t ? ` · ${t.start_time}–${t.end_time}` : ''}`],
-                    ['Преподаватель', l.teacher ? <TeacherInfo key={l.teacher} name={l.teacher} contact={data.teachers?.find(x => x.name === l.teacher)} canEdit={isModerator(me)} onSaved={load} showMsg={showMsg} /> : '—'],
-                    ['Аудитория', l.room || '—'],
-                    ['Формат', l.remote ? 'Дистанционно' : 'Очно'],
-                    ['Неделя', l.changed ? 'Только эта (замена)' : l.parity === 'all' ? 'Каждая' : l.parity === 'odd' ? 'Нечётная' : 'Чётная'],
-                ];
-                const slot = `${sel.date}|${l.pair_no}`, sol = hw[`${sel.date}|${l.pair_no + SOLUTION}`];
-                const info = (
-                    <>
-                        <dl className="lesson-info">
-                            {rowsInfo.map(([k, v]) => (<div key={k}><dt>{k}</dt><dd>{v}</dd></div>))}
-                        </dl>
-                        <HomeworkBlock date={sel.date} pair={l.pair_no} item={hw[`${sel.date}|${l.pair_no}`]} canEdit={isModerator(me)} onChanged={loadHw} showMsg={showMsg}
-                                       subject={l.subject} lessons={data.lessons} semesterStart={data.semesterStart} />
-                        {(hasContent(sol) || isModerator(me) && solOpen === slot)
-                            ? <HomeworkBlock date={sel.date} pair={l.pair_no + SOLUTION} item={sol} canEdit={isModerator(me)} onChanged={loadHw} showMsg={showMsg}
-                                             subject={l.subject} lessons={data.lessons} semesterStart={data.semesterStart} />
-                            : isModerator(me) && <button className="btn btn--tonal btn--sm hw-add-sol" onClick={() => setSolOpen(slot)}><IcoPlus /> Добавить эталонное решение</button>}
-                    </>
-                );
-                if (sel.pop) {
-                    return (
-                        <div ref={popRef} className="lesson-pop" role="dialog" aria-labelledby="lesson-title"
-                             style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden' }}>
-                            <div className="lesson-pop-head">
-                                <h2 className="lesson-pop-title" id="lesson-title">{l.subject}</h2>
-                                <button className="btn-icon btn-icon--neutral" aria-label="Закрыть" onClick={() => setSel(null)}>✕</button>
-                            </div>
-                            {info}
-                        </div>
-                    );
-                }
-                return (
-                    <div className="scrim-dialog" onMouseDown={e => { if (e.target === e.currentTarget) setSel(null); }}>
-                        <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="lesson-title">
-                            <h2 className="dialog-title" id="lesson-title">{l.subject}</h2>
-                            {info}
-                            <div className="dialog-actions"><button className="btn btn--tonal" autoFocus onClick={() => setSel(null)}>Закрыть</button></div>
-                        </div>
-                    </div>
-                );
-            })()}
         </div>
     );
 }

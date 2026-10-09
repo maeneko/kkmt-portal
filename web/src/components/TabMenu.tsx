@@ -3,8 +3,9 @@ import type { TabDef } from '../tabs';
 import { IcoChevron, IcoLogout } from './icons';
 
 // Выпадающий список вкладок в правом верхнем углу: текущая вкладка + шеврон, меню с остальными и «Выйти».
-export default function TabMenu({ tabs, active, onNavigate, onLogout }: {
-    tabs: TabDef[]; active: TabDef; onNavigate: (id: string) => void; onLogout: () => void;
+// onOpen вызывается при раскрытии меню (App закрывает подробности пары, чтобы они не перекрывали список).
+export default function TabMenu({ tabs, active, onNavigate, onLogout, onOpen }: {
+    tabs: TabDef[]; active: TabDef; onNavigate: (id: string) => void; onLogout: () => void; onOpen: () => void;
 }) {
     const [open, setOpen] = useState(false);
     const root = useRef<HTMLDivElement>(null);
@@ -20,7 +21,7 @@ export default function TabMenu({ tabs, active, onNavigate, onLogout }: {
 
     return (
         <div className="tab-menu" ref={root}>
-            <button className="tab-menu-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+            <button className="tab-menu-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => { if (!open) onOpen(); setOpen(o => !o); }}>
                 <active.Icon /> <span>{active.label}</span>
                 <span className={`tab-menu-chev${open ? ' tab-menu-chev--open' : ''}`}><IcoChevron /></span>
             </button>

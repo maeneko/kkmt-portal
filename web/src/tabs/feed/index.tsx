@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, clip, errText, isAdmin, type PageProps } from '../../lib/api';
+import { api, cached, clip, errText, isAdmin, type PageProps } from '../../lib/api';
 import Avatar from '../../components/Avatar';
 import Linkify from '../../components/Linkify';
 import Switch from '../../components/Switch';
@@ -13,9 +13,10 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: 'numer
 
 export default function Feed({ me, showMsg }: PageProps) {
     const [ask, dialog] = useConfirm();
-    const [posts, setPosts] = useState<Post[]>([]);
-    const [hasMore, setHasMore] = useState(false);
-    const [loaded, setLoaded] = useState(false);
+    // прошлая лента из кеша — сразу, свежая подставится после загрузки
+    const [posts, setPosts] = useState<Post[]>(() => cached<{ posts: Post[] }>('/posts')?.posts ?? []);
+    const [hasMore, setHasMore] = useState(() => cached<{ hasMore: boolean }>('/posts')?.hasMore ?? false);
+    const [loaded, setLoaded] = useState(() => !!cached('/posts'));
     const [draft, setDraft] = useState('');
     const [pinDraft, setPinDraft] = useState(false);
 

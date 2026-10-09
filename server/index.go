@@ -96,11 +96,38 @@ func cleanupSessions() {
 
 func app(next http.Handler) http.Handler {
 	return securityMiddleware(
-		recoveryMiddleware(
-			sessionMiddleware(next),
+		gzipMiddleware(
+			recoveryMiddleware(
+				sessionMiddleware(next),
+			),
 		),
 	)
 }
+
+// gzipMiddleware сжимает JSON-ответы API (в 5–10 раз меньше — заметно на медленном интернете).
+// Файлы ДЗ отдаются как есть: документы и картинки уже сжаты, а ServeFile сам отвечает на Range.
+func gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/api/") ||
+			strings.HasPrefix(r.URL.Path, "/api/homework/files/") ||
+			!strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Add("Vary", "Accept-Encoding")
+		zw := gzip.NewWriter(w)
+		defer zw.Close()
+		next.ServeHTTP(gzipWriter{w, zw}, r)
+	})
+}
+
+type gzipWriter struct {
+	http.ResponseWriter
+	zw *gzip.Writer
+}
+
+func (g gzipWriter) Write(b []byte) (int, error) { return g.zw.Write(b) }
 
 func securityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

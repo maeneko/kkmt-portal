@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, errText, isModerator, type PageProps } from '../../lib/api';
+import { api, cached, errText, isModerator, type PageProps } from '../../lib/api';
 import { useConfirm } from '../../components/Dialog';
 import { IcoCalendar, IcoChevron, IcoFolder, IcoPlus, IcoTrash } from '../../components/icons';
 import { subjectAt, type Lesson } from '../schedule';
@@ -33,8 +33,12 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
     const [general, setGeneral] = useState<Record<string, HwItem>>({});
     const [newTitle, setNewTitle] = useState('');
     const loadGeneral = useCallback(() => {
-        Promise.all([api<Material[]>('GET', '/materials'), api<{ items: HwItem[] }>('GET', `/homework?from=${GENERAL}&to=${GENERAL_END}`)])
-            .then(([list, d]) => { setMaterials(list); setGeneral(Object.fromEntries(d.items.map(i => [i.date, i]))); })
+        const url = `/homework?from=${GENERAL}&to=${GENERAL_END}`;
+        const show = (list: Material[], d: { items: HwItem[] }) => { setMaterials(list); setGeneral(Object.fromEntries(d.items.map(i => [i.date, i]))); };
+        const cl = cached<Material[]>('/materials'), cd = cached<{ items: HwItem[] }>(url);
+        if (cl && cd) show(cl, cd);
+        Promise.all([api<Material[]>('GET', '/materials'), api<{ items: HwItem[] }>('GET', url)])
+            .then(([list, d]) => show(list, d))
             .catch(e => showMsg(errText(e)));
     }, [showMsg]);
     useEffect(() => { loadGeneral(); }, [loadGeneral]);
@@ -69,15 +73,16 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
     // выбранная вкладка дня («дата|пара» → файлы или решение)
     const [sideTab, setSideTab] = useState<Record<string, 'files' | 'solution'>>({});
     const load = useCallback(() => {
-        (async () => {
-            const sched = await api<{ lessons: Lesson[]; semesterStart: string | null }>('GET', '/schedule');
-            setSchedule(sched);
+        type Sched = { lessons: Lesson[]; semesterStart: string | null };
+        const hwUrl = (sched: Sched) => {
             const now = new Date();
             const from = sched.semesterStart ?? iso(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
-            const to = iso(new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()));
-            const { items } = await api<{ items: HwItem[] }>('GET', `/homework?from=${from}&to=${to}`);
+            return `/homework?from=${from}&to=${iso(new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()))}`;
+        };
+        const show = (sched: Sched, items: HwItem[]) => {
+            setSchedule(sched);
             // эталонные решения лежат отдельными слотами (пара + SOLUTION): подклеиваем к паре, у которой нет других материалов — создаём её
-            const base = items.filter(i => i.pair_no <= SOLUTION);
+            const base = items.filter(i => i.pair_no <= SOLUTION).map(i => ({ ...i }));
             for (const sol of items.filter(i => i.pair_no > SOLUTION && hasContent(i))) {
                 const pair = sol.pair_no - SOLUTION;
                 let it = base.find(i => i.date === sol.date && i.pair_no === pair);
@@ -94,6 +99,13 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
             }
             for (const s of map.values()) s.items.sort((a, b) => b.date.localeCompare(a.date) || a.pair_no - b.pair_no);
             setSubjects([...map.values()]);
+        };
+        // сначала прошлые данные из кеша, потом свежие
+        const cs = cached<Sched>('/schedule'), ch = cs && cached<{ items: HwItem[] }>(hwUrl(cs));
+        if (cs && ch) show(cs, ch.items);
+        (async () => {
+            const sched = await api<Sched>('GET', '/schedule');
+            show(sched, (await api<{ items: HwItem[] }>('GET', hwUrl(sched))).items);
         })().catch(e => showMsg(errText(e)));
     }, [showMsg]);
     useEffect(() => { load(); }, [load]);
@@ -300,7 +312,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                                                                 <span className="tree-sub">{[i.files.length > 0 && `Файлов: ${i.files.length}`, i.body && 'есть задание'].filter(Boolean).join(' · ')}</span>
                                                             </span>
                                                         </button>
-                                                        <button className="mat-go-sq" title="Открыть в расписании" aria-label="Открыть в расписании" onClick={() => toLesson(i)}><IcoCalendar /></button>
+                                                        <button className="btn-sq" title="Открыть в расписании" aria-label="Открыть в расписании" onClick={() => toLesson(i)}><IcoCalendar /></button>
                                                     </div>
                                                     {d && <div className="tree-leaf">{dayBody(i, s.name)}</div>}
                                                 </li>

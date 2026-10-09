@@ -146,27 +146,67 @@
 .lesson--hit:hover:not(.lesson--now) { background: color-mix(in srgb, var(--primary) 12%, var(--surface-container)); }
 .lesson-hit { border: none; background: transparent; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%; }
 .sg-cell--full:hover:not(.sg-cell--now) { background: color-mix(in srgb, var(--primary) 12%, var(--surface-container)); }
-.lesson-info { display: flex; flex-direction: column; gap: 2px; }
-.lesson-info > div { display: flex; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--outline-variant); }
-.lesson-info > div:last-child { border-bottom: none; }
-.lesson-info dt { width: 120px; flex-shrink: 0; color: var(--neutral-text); font-size: 13px; }
-.lesson-info dd { font-size: 14px; font-weight: 500; }
+/* день, пара, аудитория, преподаватель — карточками-плитками: подпись сверху, значение под ней */
+.lesson-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lesson-info > div { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; min-height: 56px; padding: 8px 16px; border-radius: 16px; background: var(--surface-container); }
+.lesson-info > .li-wide { grid-column: 1 / -1; }
+.sheet .lesson-info > div { background: var(--surface-bright); }
+/* «Преподаватель» — MD3 split-контейнер: сегмент с текстом и сегмент-кнопка контактов через зазор 2dp;
+   внешние углы 16dp, внутренние 4dp; раскрытые контакты — третий сегмент под ними */
+.lesson-info > .li-teacher { padding: 0; gap: 2px; background: none; border-radius: 0; }
+.sheet .lesson-info > .li-teacher { background: none; }
+.ti-head { display: flex; align-items: stretch; gap: 2px; min-height: 56px; }
+.ti-text { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 16px; background: var(--surface-container); border-radius: 16px 4px 4px 16px; }
+.ti-label { color: var(--neutral-text); font-size: 12px; line-height: 16px; }
+.ti-name { font-size: 14px; font-weight: 500; line-height: 20px; overflow-wrap: anywhere; }
+.ti-btn {
+    position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 56px; min-height: 48px;
+    border: none; border-radius: 4px 16px 16px 4px; background: var(--primary-container); color: var(--on-primary-container);
+    cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.2s var(--ease-std), color 0.2s var(--ease-std);
+}
+.ti-btn svg { width: 24px; height: 24px; }
+/* слой состояния: наведение 8%, нажатие 10% */
+.ti-btn::after { content: ''; position: absolute; inset: 0; background: currentColor; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+.ti-btn:hover::after { opacity: .08; }
+.ti-btn:active::after { opacity: .10; }
+.ti-btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.ti-btn[aria-expanded='true'] { background: var(--primary); color: var(--on-primary); }
+/* раскрыто: нижние внешние углы сегментов становятся внутренними (4dp) */
+.ti-head:has(.ti-btn[aria-expanded='true']) .ti-text { border-radius: 16px 4px 4px 4px; }
+.ti-head:has(.ti-btn[aria-expanded='true']) .ti-btn { border-radius: 4px 16px 4px 4px; }
+.ti-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 16px; background: var(--surface-container); border-radius: 4px 4px 16px 16px; }
+.sheet .ti-text, .sheet .ti-body { background: var(--surface-bright); }
+.lesson-info dt { color: var(--neutral-text); font-size: 12px; line-height: 16px; }
+.lesson-info dd { font-size: 14px; line-height: 20px; font-weight: 500; overflow-wrap: anywhere; }
 
 /* В карточках мета — одной строкой, длинное ФИО обрезается многоточием (полностью — в попапе) */
 .sched--cards .lesson-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sched--cards .lesson .grow { min-width: 0; }
 
-/* Десктопный попап рядом с парой */
-.lesson-pop {
-    position: fixed; z-index: 400; width: 340px; max-height: calc(100dvh - 16px); overflow-y: auto; padding: 14px 18px 8px;
+/* z-index ниже шапки (100): иначе панель перекрывает выпадающее меню вкладок. Десктоп: панель пары закреплена справа (её рисует App), страница сдвигается влево; на узком окне панель поверх */
+.lesson-side {
+    position: fixed; z-index: 90; top: 76px; right: 16px; bottom: 16px; width: 364px; overflow-y: auto; padding: 16px 20px 16px;
     background: var(--surface-bright); border: 1px solid var(--outline-variant); border-radius: var(--r-card);
-    box-shadow: 0 8px 28px var(--shadow); animation: dialog-in 200ms var(--ease-in);
+    box-shadow: 0 8px 28px var(--shadow); animation: side-in 220ms var(--ease-in);
 }
-.lesson-pop-head { display: flex; align-items: flex-start; gap: 8px; }
-.lesson-pop-title { flex: 1; font-size: 16px; font-weight: 500; line-height: 1.3; padding-top: 6px; }
-.lesson-pop .lesson-info > div { padding: 8px 0; gap: 12px; }
-.lesson-pop .lesson-info dt { width: 96px; font-size: 12px; }
-.lesson-pop .lesson-info dd { font-size: 13px; }
+@keyframes side-in { from { opacity: 0; transform: translateX(24px); } }
+/* закрытие: панель уезжает вправо и гаснет, пока страница возвращается на место */
+.lesson-side--out { animation: side-out 240ms var(--ease-out) forwards; pointer-events: none; }
+@keyframes side-out { to { opacity: 0; transform: translateX(24px); } }
+/* Сдвиг страницы плавный: анимируется число --side (ширина панели вместе с отступами), а не margin: auto,
+   который CSS не умеет анимировать (из-за этого страница прыгала). Центрирование считается руками, как auto. */
+@property --side { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@media (min-width: 1100px) {
+    .app { --side: 0px; transition: --side 0.28s var(--ease-std); }
+    .app:has(.lesson-side:not(.lesson-side--out)) { --side: 396px; }
+    .main {
+        --gutter: max(0px, calc((100% - var(--side) - 1200px) / 2));
+        max-width: min(1200px, calc(100% - var(--side)));
+        margin: 0 calc(var(--side) + var(--gutter)) 0 var(--gutter);
+    }
+}
+.lesson-pop-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
+.lesson-pop-title { flex: 1; font-size: 22px; font-weight: 400; line-height: 28px; padding-top: 4px; }
 .is-sel { outline: 2px solid var(--primary); outline-offset: -2px; }
 
 /* Домашнее задание и файлы в попапе */
@@ -181,7 +221,7 @@
 .hw-badges { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .hw-badge { display: inline-flex; align-items: center; gap: 3px; color: var(--primary); font-size: 11px; font-weight: 500; flex-shrink: 0; }
 .sg-lesson .hw-badges { margin-top: 2px; }
-.lesson-pop .hw-badge, .sg-lesson .hw-badge { margin-top: 1px; }
+.lesson-side .hw-badge, .sg-lesson .hw-badge { margin-top: 1px; }
 .dialog .hw { margin-top: 0; }
 /* эталонное решение — зелёная зона */
 .hw--solution { padding: 8px 12px 12px; border: 1px solid color-mix(in srgb, var(--success-dot) 45%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); }
@@ -190,22 +230,35 @@
 .hw-add-sol { align-self: stretch; justify-content: center; height: 44px; margin-top: 4px; border: 1px dashed color-mix(in srgb, var(--success-dot) 60%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); color: var(--success-dot); font-weight: 600; }
 .hw-add-sol:hover { background: color-mix(in srgb, var(--success-dot) 18%, var(--surface-bright)); }
 .hw--solution .hw-title { color: var(--success-dot); font-weight: 600; }
+/* подробности пары (панель справа и шторка): сетка 4/8dp, заголовки секций title-small 14/20, текст body-medium 14/20 */
+.lesson-side .hw, .sheet--lesson .hw { gap: 12px; padding: 16px 0 8px; margin-top: 16px; }
+.lesson-side .hw-head, .sheet--lesson .hw-head { min-height: 40px; }
+.lesson-side .hw-head ~ .hw-head, .sheet--lesson .hw-head ~ .hw-head { margin-top: 4px; }
+.lesson-side .hw-title, .sheet--lesson .hw-title { font-size: 14px; line-height: 20px; font-weight: 500; }
+.lesson-side .hw-body, .sheet--lesson .hw-body, .lesson-side .hw-empty, .sheet--lesson .hw-empty { font-size: 14px; line-height: 20px; }
+.lesson-side .hw--solution, .sheet--lesson .hw--solution { padding: 12px 16px 16px; }
+.lesson-side .hw-add-sol, .sheet--lesson .hw-add-sol { height: 48px; margin-top: 16px; }
 
 .text-link { color: var(--primary); text-decoration: underline; word-break: break-all; }
+.hw-file-entry { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .hw-author { font-size: 11px; color: var(--neutral-text); padding: 0 12px; }
 .hw-progress { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 16px; background: var(--surface-container); font-size: 12px; }
 .hw-progress-name { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
 .hw-progress-bar { height: 6px; border-radius: 3px; background: var(--outline-variant); overflow: hidden; }
 .hw-progress-bar i { display: block; height: 100%; background: var(--primary); transition: width .15s linear; }
 .hw-form { display: flex; flex-direction: column; gap: 8px; }
-.hw-contact { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
-.hw-contact a { color: var(--primary); text-decoration: none; }
-.hw-contact a:hover { text-decoration: underline; }
+/* контакты преподавателя: строка на телефон и на почту, иконка слева, нажимается вся строка */
+.hw-contact { display: flex; flex-direction: column; gap: 6px; }
+.hw-contact-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; background: var(--surface-bright); color: var(--on-surface); font-size: 14px; font-weight: 500; text-decoration: none; overflow-wrap: anywhere; transition: background 0.12s; }
+.hw-contact-row svg { flex-shrink: 0; color: var(--primary); }
+.hw-contact-row:hover { background: color-mix(in srgb, var(--primary) 10%, var(--surface-bright)); }
+.sheet .hw-contact-row { background: var(--surface-container); }
+.sheet .hw-contact-row:hover { background: color-mix(in srgb, var(--primary) 10%, var(--surface-container)); }
 /* Файлы и ссылки — капсулами */
 .hw-files { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 /* файл: таблетка-ссылка, под ней — что в нём сделать */
 /* файл — карточка: капсула на всю ширину, под ней кто добавил и что сделать */
-.hw-file-item { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; padding: 6px; border-radius: 20px; background: color-mix(in srgb, var(--on-surface) 5%, transparent); }
+.hw-file-item { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; padding: 6px; border-radius: 20px; background: color-mix(in srgb, var(--on-surface) 5%, transparent); }
 .hw-note { align-self: stretch; padding: 8px 12px; border-radius: 12px; background: var(--surface-container); font-size: 13px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 .hw-note-in {
     align-self: stretch; padding: 8px 12px; border: 1px solid var(--outline-variant); border-radius: 12px; background: var(--surface-container);
@@ -324,6 +377,10 @@ select.tf-in, .tf-btn { appearance: none; cursor: pointer; padding-right: 32px;
 }
 @keyframes sheet-in { from { transform: translateY(calc(100% + 24px)); } }
 .sheet--out { transform: translateY(calc(100% + 24px)); transition: transform 260ms var(--ease-out); }
+/* подробности пары: заголовок поменьше, содержимое прокручивается внутри шторки */
+.sheet--lesson { gap: 16px; }
+.sheet--lesson .sheet-title { font-size: 20px; font-weight: 400; line-height: 28px; }
+.sheet-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px; }
 .sheet-drag { display: flex; flex-direction: column; gap: 12px; touch-action: none; }
 /* ручка 32×4, но область нажатия 48px по высоте */
 .sheet-handle { display: block; width: 48px; height: 24px; margin: 4px auto 0; padding: 0; border: none; background: transparent; cursor: pointer; position: relative; }

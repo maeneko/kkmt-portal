@@ -1,7 +1,7 @@
 // Кеш для быстрой загрузки:
 //   аватарки Telegram — сразу из кеша, в фоне обновляются (новая аватарка видна со следующего раза);
 //   файлы сборки /assets/* (хеш в имени) — из кеша;
-//   страница — из сети, без сети — из кеша. Запросы к /api не кешируются.
+//   страница — из сети, без сети или при ответе дольше 3 с — из кеша. Запросы к /api не кешируются (их кеширует api.ts).
 // Поменять версию — старые кеши удалятся при активации.
 const STATIC = 'kkmt-static-v1';
 const AVATARS = 'kkmt-avatars-v1';
@@ -35,15 +35,13 @@ async function cacheFirst(req) {
     return res;
 }
 
+// Медленная сеть: если страница не пришла за 3 с, показываем сохранённую, а свежая сохранится в фоне.
 async function networkFirst(req) {
     const cache = await caches.open(STATIC);
-    try {
-        const res = await fetch(req);
-        if (res.ok) cache.put('/', res.clone());
-        return res;
-    } catch {
-        return (await cache.match('/')) ?? Response.error();
-    }
+    const net = fetch(req).then(res => { if (res.ok) cache.put('/', res.clone()); return res; });
+    const hit = await cache.match('/');
+    if (!hit) return net;
+    return Promise.race([net.catch(() => hit), new Promise(r => setTimeout(() => r(hit), 3000))]);
 }
 
 // Картинка с другого сайта приходит «непрозрачной» (opaque) — её тоже можно хранить и показывать.

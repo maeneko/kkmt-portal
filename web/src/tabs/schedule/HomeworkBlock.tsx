@@ -16,28 +16,38 @@ export const hasContent = (i?: HwItem) => !!i && (!!i.body || i.files.length > 0
 const MAX_MB = 50;
 const ddmm = (d: string) => `${d.slice(8)}.${d.slice(5, 7)}`;
 
-// Файлы ДЗ: под каждым — что именно в нём сделать. С onNote подпись редактируется (сохраняется при уходе с поля).
+// Файлы ДЗ: подпись «что сделать», сам файл; файлы одного автора собраны в одну карточку с общей строкой «Добавлено».
+// С onNote подпись редактируется (сохраняется при уходе с поля).
 export function FileList({ files, onRemove, onNote }: { files: HwFile[]; onRemove?: (f: HwFile) => void; onNote?: (f: HwFile, note: string) => void }) {
+    const groups: { author: string; files: HwFile[] }[] = [];
+    for (const f of files) {
+        const g = groups.find(x => x.author === f.author);
+        if (g) g.files.push(f); else groups.push({ author: f.author, files: [f] });
+    }
     return (
         <ul className="hw-files">
-            {files.map(f => (
-                <li key={f.id} className="hw-file-item">
-                    <div className="hw-pill">
-                        <a className="hw-pill-link" href={`/api/homework/files/${f.id}`} download={f.name} title={`Скачать · ${f.name}`}>
-                            <IcoClip />
-                            <span className="hw-pill-name">{f.name}</span>
-                            <span className="hw-pill-size">{fmtSize(f.size)}</span>
-                            <IcoDownload />
-                        </a>
-                        {onRemove && <button className="hw-pill-x" aria-label={`Удалить ${f.name}`} title="Удалить" onClick={() => onRemove(f)}><IcoTrash /></button>}
-                    </div>
-                    {onNote ? (
-                        <textarea key={f.note} className="hw-note-in" rows={1} maxLength={500} placeholder="Что сделать в этом файле" defaultValue={f.note}
-                                  ref={el => { if (el) { el.style.height = '0'; el.style.height = `${el.scrollHeight + 2}px`; } }}
-                                  onInput={e => { const el = e.currentTarget; el.style.height = '0'; el.style.height = `${el.scrollHeight + 2}px`; }}
-                                  onBlur={e => { if (e.target.value.trim() !== f.note) onNote(f, e.target.value.trim()); }} />
-                    ) : f.note && <p className="hw-note"><Linkify text={f.note} /></p>}
-                    {f.author && <span className="hw-author">Добавлено: {f.author}</span>}
+            {groups.map(g => (
+                <li key={g.author} className="hw-file-item">
+                    {g.files.map(f => (
+                        <div key={f.id} className="hw-file-entry">
+                            {onNote ? (
+                                <textarea key={f.note} className="hw-note-in" rows={1} maxLength={500} placeholder="Что сделать в этом файле" defaultValue={f.note}
+                                          ref={el => { if (el) { el.style.height = '0'; el.style.height = `${el.scrollHeight + 2}px`; } }}
+                                          onInput={e => { const el = e.currentTarget; el.style.height = '0'; el.style.height = `${el.scrollHeight + 2}px`; }}
+                                          onBlur={e => { if (e.target.value.trim() !== f.note) onNote(f, e.target.value.trim()); }} />
+                            ) : f.note && <p className="hw-note"><Linkify text={f.note} /></p>}
+                            <div className="hw-pill">
+                                <a className="hw-pill-link" href={`/api/homework/files/${f.id}`} download={f.name} title={`Скачать · ${f.name}`}>
+                                    <IcoClip />
+                                    <span className="hw-pill-name">{f.name}</span>
+                                    <span className="hw-pill-size">{fmtSize(f.size)}</span>
+                                    <IcoDownload />
+                                </a>
+                                {onRemove && <button className="hw-pill-x" aria-label={`Удалить ${f.name}`} title="Удалить" onClick={() => onRemove(f)}><IcoTrash /></button>}
+                            </div>
+                        </div>
+                    ))}
+                    {g.author && <span className="hw-author">Добавлено: {g.author}</span>}
                 </li>
             ))}
         </ul>
@@ -80,7 +90,8 @@ export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, sh
         x.onerror = () => reject(new Error('Нет соединения'));
         x.onload = () => {
             if (x.status < 300) return resolve();
-            let msg = `Ошибка ${x.status}`;
+            // 413 не в нашем JSON — его отдал nginx перед приложением (у него свой лимит на размер запроса)
+            let msg = x.status === 413 ? 'Сервер не принял файл: превышен лимит nginx (client_max_body_size)' : `Ошибка ${x.status}`;
             try { msg = JSON.parse(x.responseText).error ?? msg; } catch { /* не JSON */ }
             reject(new Error(msg));
         };

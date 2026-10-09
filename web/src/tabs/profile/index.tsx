@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, displayName, errText, NICK_MAX, type PageProps, type Role } from '../../lib/api';
+import { api, cached, displayName, errText, NICK_MAX, type PageProps, type Role } from '../../lib/api';
 import Avatar from '../../components/Avatar';
 import { IcoLogout } from '../../components/icons';
 import './profile.css';
@@ -11,7 +11,7 @@ export default function Profile({ me, reloadMe, showMsg, logout }: PageProps) {
     const [name, setName] = useState(me.display_name ?? '');
     const [realName, setRealName] = useState(me.real_name ?? '');
     const [saving, setSaving] = useState(false);
-    const [members, setMembers] = useState<Member[]>([]);
+    const [members, setMembers] = useState<Member[]>(() => cached<Member[]>('/users') ?? []);
 
     useEffect(() => { api<Member[]>('GET', '/users').then(setMembers).catch(e => showMsg(errText(e))); }, [showMsg]);
 
