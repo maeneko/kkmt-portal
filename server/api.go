@@ -44,7 +44,7 @@ func displayNameSQL(table string) string {
 }
 
 var (
-	allowedExt = []string{"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "zip", "jpg", "jpeg", "png"}
+	allowedExt = []string{"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "odg", "txt", "zip", "jpg", "jpeg", "png"}
 	timeRe     = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
 )
 

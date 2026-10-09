@@ -64,7 +64,7 @@ export function LinkList({ links, onRemove }: { links: HwLink[]; onRemove?: (l: 
     );
 }
 
-const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.jpg,.jpeg,.png';
+const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.odg,.txt,.zip,.jpg,.jpeg,.png';
 export const fmtSize = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(b / 1024))} КБ`);
 
 // Домашнее задание и файлы к паре: читают все, добавляют и меняют админы/староста.
