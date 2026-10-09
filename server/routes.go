@@ -158,6 +158,18 @@ func adminRoutes(m *http.ServeMux) {
 	)
 
 	m.HandleFunc(
+		"POST /api/admin/ocr",
+		moderator(ocrSheet),
+	)
+	m.HandleFunc(
+		"GET /api/admin/ocr/aliases",
+		moderator(listOcrAliases),
+	)
+	m.HandleFunc(
+		"PUT /api/admin/ocr/aliases",
+		moderator(saveOcrAliases),
+	)
+	m.HandleFunc(
 		"PUT /api/admin/schedule",
 		moderator(saveSchedule),
 	)

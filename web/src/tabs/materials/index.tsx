@@ -122,7 +122,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
     const generalSummary = materials.length ? `Материалов: ${materials.length}` : '';
     // список общих материалов: у каждого название, описание, файлы и ссылки; модератор добавляет и удаляет
     const generalBlock = (
-        <div className="stack">
+        <div className="stack mat-general">
             {isModerator(me) && (
                 <form className="mat-new" onSubmit={e => { e.preventDefault(); addMaterial(); }}>
                     <input className="field" maxLength={200} placeholder="Название нового материала" value={newTitle} onChange={e => setNewTitle(e.target.value)} />

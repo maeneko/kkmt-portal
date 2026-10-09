@@ -98,10 +98,20 @@
 .lesson--empty { background: color-mix(in srgb, var(--surface-container) 40%, transparent); }
 .lesson--empty .lesson-time { opacity: .6; }
 .sched-cards .lesson { align-items: center; }
+/* узкая карточка (например, при открытой панели пары): текст сжимается, а не распирает пару за край карточки */
+.sched-cards .lesson .grow { min-width: 0; }
+/* у .card перенос «где угодно» рвёт слова посередине — в названиях пар переносим по слогам */
+.sched-cards .lesson-subj { overflow-wrap: normal; hyphens: auto; }
+/* совсем узкая пара (окно ~1100 px с открытой панелью): значки ДЗ и файлов — столбиком, чтобы осталось место названию */
+.sched-cards .day-rows { container-type: inline-size; }
+@container (max-width: 210px) {
+    .sched-cards .lesson { gap: 6px; padding-left: 8px; padding-right: 8px; }
+    .sched-cards .hw-badges { flex-direction: column; align-items: flex-end; gap: 2px; }
+}
 .lesson { min-height: 52px; }
 @media (min-width: 641px) {
     .sched--cards .sched-cards .card { overflow: hidden; }
-    .sched--cards .day-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: repeat(var(--rows, 6), minmax(0, 1fr)); gap: 4px; }
+    .sched--cards .day-rows { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(var(--rows, 6), minmax(0, 1fr)); gap: 4px; }
     .sched--cards .day-rows .lesson { min-height: 0; padding: 3px 10px; overflow: hidden; }
     .sched--cards .day-rows .lesson-subj { font-size: 12px; line-height: 1.25; }
     .sched--cards .day-rows .lesson-meta { font-size: 11px; line-height: 1.2; margin-top: 0; }

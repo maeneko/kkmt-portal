@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, cached, errText, isModerator, type PageProps } from '../../lib/api';
-import { IcoCalendar, IcoClip, IcoEdit, IcoNote } from '../../components/icons';
+import { IcoCalendar, IcoClip, IcoEdit, IcoNote, IcoScan } from '../../components/icons';
 import type { HwItem } from './HomeworkBlock';
 import ScheduleEditor from './ScheduleEditor';
+import SheetImport from './SheetImport';
 import DatePicker from './DatePicker';
 import './schedule.css';
 
@@ -10,7 +11,7 @@ export interface Lesson { id?: number; weekday: number; pair_no: number; parity:
 // Замена пары на дату (правка «только этой недели»); пустой subject — пары нет
 export interface LessonChange { date: string; pair_no: number; subject: string; teacher: string; room: string; kind: string; remote: boolean }
 export interface PairTime { pair_no: number; start_time: string; end_time: string }
-export interface Teacher { name: string; phone: string; email: string }
+export interface Teacher { name: string; phone: string; email: string; vk: string; tg: string }
 interface Data { lessons: Lesson[]; changes?: LessonChange[]; teachers?: Teacher[]; times: PairTime[]; satTimes?: PairTime[]; semesterStart: string | null }
 
 const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
@@ -70,6 +71,8 @@ export default function Schedule({ me, showMsg, focus, goTo, openLesson: open, c
     useEffect(() => { setDay(Math.min((target.getDay() + 6) % 7, 5)); }, [target]);
     // Правка расписания прямо в карточке дня: замены на эту неделю или постоянное расписание
     const [editing, setEditing] = useState<'week' | 'all' | null>(null);
+    // «Скан» — распознавание фото листа замен (вместо сетки)
+    const [importing, setImporting] = useState(false);
     const [dial, setDial] = useState(false);
     // календарь по нажатию на дату: переход на любую неделю, в том числе прошлую (чтобы добавить дз и файлы задним числом)
     const [picking, setPicking] = useState(false);
@@ -129,6 +132,8 @@ export default function Schedule({ me, showMsg, focus, goTo, openLesson: open, c
     const maxPair = Math.max(data.times.length, satTimes.size, ...data.lessons.map(l => l.pair_no), ...changes.map(c => c.pair_no), 0);
     const rows = Array.from({ length: maxPair }, (_, i) => i + 1);
 
+    if (importing) return <SheetImport showMsg={showMsg} onClose={() => setImporting(false)} onSaved={load} />;
+
     return (
         <div className={`sched sched--${view}${editing ? ' sched--editing' : ''}`}>
             <div className="week-bar">
@@ -143,6 +148,9 @@ export default function Schedule({ me, showMsg, focus, goTo, openLesson: open, c
                     <button role="tab" aria-selected={view === 'cards'} onClick={() => setView('cards')}>Карточки</button>
                 </div>
                 {/* десктоп — кнопка с меню, телефон — FAB с двумя кнопками над ним */}
+                {isModerator(me) && !editing && (
+                    <button className="theme-toggle theme-toggle--inline" title="Скан" aria-label="Скан — распознать фото листа замен" onClick={() => setImporting(true)}><IcoScan /></button>
+                )}
                 {isModerator(me) && !editing && (
                     <div className="edit-dial">
                         {dial && (

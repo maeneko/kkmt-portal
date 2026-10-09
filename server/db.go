@@ -134,7 +134,16 @@ var schema = []string{
 	`CREATE TABLE IF NOT EXISTS teachers (
         name VARCHAR(200) PRIMARY KEY,
         phone VARCHAR(30) NOT NULL DEFAULT '',
-        email VARCHAR(100) NOT NULL DEFAULT ''
+        email VARCHAR(100) NOT NULL DEFAULT '',
+        vk VARCHAR(64) NOT NULL DEFAULT '',
+        tg VARCHAR(64) NOT NULL DEFAULT ''
+    ) CHARACTER SET utf8mb4`,
+	// Память исправлений распознавания листа замен: как прочитал OCR → что это на самом деле
+	`CREATE TABLE IF NOT EXISTS ocr_aliases (
+        kind VARCHAR(10) NOT NULL,
+        ocr VARCHAR(200) NOT NULL,
+        value VARCHAR(200) NOT NULL,
+        PRIMARY KEY (kind, ocr)
     ) CHARACTER SET utf8mb4`,
 	// Замены пар на конкретную дату (правка «только этой недели»); пустой subject — пары нет
 	`CREATE TABLE IF NOT EXISTS lesson_changes (
@@ -186,6 +195,12 @@ func migrate(conn *sqlx.DB) error {
 		if _, err := conn.Exec("UPDATE invites SET used_count = 1 WHERE used_by IS NOT NULL"); err != nil {
 			return err
 		}
+	}
+	if _, err := addColumn("teachers", "vk", "VARCHAR(64) NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if _, err := addColumn("teachers", "tg", "VARCHAR(64) NOT NULL DEFAULT ''"); err != nil {
+		return err
 	}
 	if _, err := addColumn("users", "invite_code", "CHAR(6) NULL"); err != nil {
 		return err

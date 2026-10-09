@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { api, errText } from '../../lib/api';
-import { IcoInfo, IcoMail, IcoPhone } from '../../components/icons';
+import { IcoInfo, IcoMail, IcoPhone, IcoTelegram, IcoVK } from '../../components/icons';
 import type { Teacher } from '.';
 
-// Преподаватель в карточке пары: имя и квадратная кнопка «i», по нажатию — телефон и почта (кликабельные); модератор правит контакты там же.
+// Преподаватель в карточке пары: имя и квадратная кнопка «i», по нажатию — телефон, почта, ВК и Telegram (кликабельные); модератор правит контакты там же.
 export default function TeacherInfo({ name, contact, canEdit, onSaved, showMsg }: {
     name: string; contact?: Teacher; canEdit: boolean; onSaved: () => void; showMsg: (t: string) => void;
 }) {
     const [open, setOpen] = useState(false);
-    const [draft, setDraft] = useState<{ phone: string; email: string } | null>(null);
+    const [draft, setDraft] = useState<{ phone: string; email: string; vk: string; tg: string } | null>(null);
     const [busy, setBusy] = useState(false);
 
     const save = async () => {
@@ -31,6 +31,8 @@ export default function TeacherInfo({ name, contact, canEdit, onSaved, showMsg }
                         <form className="hw-form" onSubmit={e => { e.preventDefault(); save(); }}>
                             <input className="field" type="tel" autoFocus maxLength={30} placeholder="Телефон" value={draft.phone} onChange={e => setDraft({ ...draft, phone: e.target.value })} />
                             <input className="field" type="email" maxLength={100} placeholder="Почта" value={draft.email} onChange={e => setDraft({ ...draft, email: e.target.value })} />
+                            <input className="field" maxLength={100} placeholder="ВК: ссылка на профиль" value={draft.vk} onChange={e => setDraft({ ...draft, vk: e.target.value })} />
+                            <input className="field" maxLength={100} placeholder="Telegram: @name или ссылка" value={draft.tg} onChange={e => setDraft({ ...draft, tg: e.target.value })} />
                             <div className="row" style={{ justifyContent: 'flex-end' }}>
                                 <button type="button" className="btn btn--tonal btn--sm" disabled={busy} onClick={() => setDraft(null)}>Отмена</button>
                                 <button className="btn btn--primary btn--sm" disabled={busy}>Сохранить</button>
@@ -38,13 +40,15 @@ export default function TeacherInfo({ name, contact, canEdit, onSaved, showMsg }
                         </form>
                     ) : (
                         <>
-                            {contact?.phone || contact?.email ? (
+                            {contact?.phone || contact?.email || contact?.vk || contact?.tg ? (
                                 <div className="hw-contact">
                                     {contact.phone && <a className="hw-contact-row" href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`}><IcoPhone /><span>{contact.phone}</span></a>}
                                     {contact.email && <a className="hw-contact-row" href={`mailto:${contact.email}`}><IcoMail /><span>{contact.email}</span></a>}
+                                    {contact.vk && <a className="hw-contact-row" href={`https://vk.com/${contact.vk}`} target="_blank" rel="noopener noreferrer"><IcoVK /><span>vk.com/{contact.vk}</span></a>}
+                                    {contact.tg && <a className="hw-contact-row" href={`https://t.me/${contact.tg}`} target="_blank" rel="noopener noreferrer"><IcoTelegram /><span>@{contact.tg}</span></a>}
                                 </div>
                             ) : <span className="hint">Контакты не указаны</span>}
-                            {canEdit && <button className="btn btn--tonal btn--sm" style={{ alignSelf: 'flex-start' }} onClick={() => setDraft({ phone: contact?.phone ?? '', email: contact?.email ?? '' })}>Изменить</button>}
+                            {canEdit && <button className="btn btn--tonal btn--sm" style={{ alignSelf: 'flex-start' }} onClick={() => setDraft({ phone: contact?.phone ?? '', email: contact?.email ?? '', vk: contact?.vk ?? '', tg: contact?.tg ?? '' })}>Изменить</button>}
                         </>
                     )}
                 </div>

@@ -24,9 +24,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go vet ./server
+      - run: go vet ./server ./ocr
       - run: go test ./server
       - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/kkmt ./server
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/kkmt-ocr ./ocr
 
       # Фронтенд (React + Vite)
       - uses: actions/setup-node@v4
@@ -41,6 +42,7 @@ jobs:
         run: |
           test -f dist/public/index.html
           test -f dist/kkmt
+          test -f dist/kkmt-ocr
 
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'push'
@@ -63,6 +65,13 @@ jobs:
           tags: kkmt:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Образ распознавания (Dockerfile.ocr): собирается из готового бинарника, как на сервере
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/kkmt-ocr ./ocr
+      - run: docker build -f Dockerfile.ocr -t kkmt-ocr:ci .
 
   deploy:
     name: Выкатка на сервер
@@ -91,7 +100,7 @@ jobs:
           HOST: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
           DIR: ${{ secrets.DEPLOY_PATH }}
         run: |
-          chmod +x dist/kkmt
+          chmod +x dist/kkmt dist/kkmt-ocr
           rsync -az --delete dist/ "$HOST:$DIR/dist/"
-          rsync -az Dockerfile.runtime Dockerfile.runtime.dockerignore docker-compose.server.yml "$HOST:$DIR/"
+          rsync -az Dockerfile.runtime Dockerfile.runtime.dockerignore Dockerfile.ocr Dockerfile.ocr.dockerignore docker-compose.server.yml "$HOST:$DIR/"
           ssh "$HOST" "cd '$DIR' && docker compose -f docker-compose.server.yml up -d --build && docker image prune -f"

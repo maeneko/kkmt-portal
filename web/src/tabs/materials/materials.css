@@ -53,6 +53,7 @@
     .tree-leaf > .mat-zone { grid-column: 1; }
     .tree-leaf > .mat-side { grid-column: 2; }
     .tree-leaf > .mat-side:first-child { grid-column: 1 / -1; }
+    .tree-leaf > .mat-general { grid-column: 1 / -1; }
 }
 
 /* ---------- Вид «Карточки» ---------- */
@@ -115,4 +116,5 @@
 
 /* форма добавления общего материала */
 .mat-new { display: flex; gap: 8px; align-items: center; }
+.tree-leaf > .mat-general { padding-top: 8px; }
 .mat-new .field { flex: 1; min-width: 0; }

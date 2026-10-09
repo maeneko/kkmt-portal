@@ -9,12 +9,25 @@ services:
     container_name: kkmt
     restart: unless-stopped
     env_file: .env
+    environment:
+      OCR_URL: http://kkmt-ocr:3001
     ports:
       - "127.0.0.1:3010:3000"
     volumes:
       - kkmt-uploads:/data/uploads
     networks: [ma7]
     mem_limit: 256m
+
+  # Распознавание листа замен: наружу порт не открыт, к нему ходит только kkmt
+  kkmt-ocr:
+    build:
+      context: .
+      dockerfile: Dockerfile.ocr
+    image: kkmt-ocr:latest
+    container_name: kkmt-ocr
+    restart: unless-stopped
+    networks: [ma7]
+    mem_limit: 320m
 
 networks:
   ma7:

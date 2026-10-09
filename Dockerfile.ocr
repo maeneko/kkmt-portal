@@ -1,0 +1,12 @@
+# Сервис распознавания листа замен (ocr/): отдельный контейнер со своим лимитом памяти.
+# Бинарник собирается заранее (как и основной):
+#   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/kkmt-ocr ./ocr
+FROM alpine:3.20
+RUN apk add --no-cache tesseract-ocr \
+ && mkdir /tessdata \
+ && wget -qO /tessdata/rus.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/9ddc24e750eec0994223a9edc3fcb434a2244f3b/rus.traineddata \
+ && echo "b617eb6830ffabaaa795dd87ea7fd251adfe9cf0efe05eb9a2e8128b7728d6b6  /tessdata/rus.traineddata" | sha256sum -c -
+ENV TESSDATA_DIR=/tessdata
+COPY dist/kkmt-ocr /kkmt-ocr
+EXPOSE 3001
+ENTRYPOINT ["/kkmt-ocr"]

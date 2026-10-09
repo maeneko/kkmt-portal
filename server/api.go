@@ -241,6 +241,22 @@ type Teacher struct {
 	Name  string `db:"name" json:"name"`
 	Phone string `db:"phone" json:"phone"`
 	Email string `db:"email" json:"email"`
+	VK    string `db:"vk" json:"vk"` // имя профиля: vk.com/<vk>
+	TG    string `db:"tg" json:"tg"` // имя профиля: t.me/<tg>
+}
+
+// Профиль соцсети из того, что ввёл модератор («@ivanov», «t.me/ivanov», «https://vk.com/id1»): только имя,
+// ссылку собирает интерфейс — так в неё не попадёт чужой адрес.
+var (
+	tgRe = regexp.MustCompile(`^(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/|^@`)
+	vkRe = regexp.MustCompile(`^(?:https?://)?(?:www\.|m\.)?vk\.(?:com|ru)/|^@`)
+	tgOk = regexp.MustCompile(`^[A-Za-z0-9_]{3,64}$`)
+	vkOk = regexp.MustCompile(`^[A-Za-z0-9_.]{2,64}$`)
+)
+
+func profile(s string, prefix, ok *regexp.Regexp) (string, bool) {
+	s = strings.TrimRight(prefix.ReplaceAllString(strings.TrimSpace(s), ""), "/")
+	return s, s == "" || ok.MatchString(s)
 }
 
 // schedule отдаёт всё расписание: пары, замены, контакты преподавателей, звонки (обычные и субботние) и дату начала семестра (от неё считается чётность недели).
@@ -249,7 +265,7 @@ func schedule(w http.ResponseWriter, r *http.Request) {
 	err := errors.Join(
 		db.Select(&lessons, "SELECT id, weekday, pair_no, parity, subject, teacher, room, kind, remote FROM lessons ORDER BY weekday, pair_no"),
 		db.Select(&changes, "SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, subject, teacher, room, kind, remote FROM lesson_changes"),
-		db.Select(&teachers, "SELECT name, phone, email FROM teachers"),
+		db.Select(&teachers, "SELECT name, phone, email, vk, tg FROM teachers"),
 		db.Select(&times, "SELECT pair_no, start_time, end_time FROM pair_times ORDER BY pair_no"),
 		db.Select(&satTimes, "SELECT pair_no, start_time, end_time FROM pair_times_sat ORDER BY pair_no"),
 		db.Select(&sem, "SELECT v FROM settings WHERE k = 'semester_start'"),
@@ -529,7 +545,7 @@ func attachFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, f)
 }
 
-// saveTeacher сохраняет телефон и почту преподавателя; если оба пустые — запись удаляется.
+// saveTeacher сохраняет контакты преподавателя (телефон, почта, ВК, Telegram); если все пустые — запись удаляется.
 func saveTeacher(w http.ResponseWriter, r *http.Request) {
 	var in Teacher
 	if !decode(w, r, &in) {
@@ -540,12 +556,20 @@ func saveTeacher(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Не указан преподаватель")
 		return
 	}
+	var okVK, okTG bool
+	in.VK, okVK = profile(in.VK, vkRe, vkOk)
+	in.TG, okTG = profile(in.TG, tgRe, tgOk)
+	if !okVK || !okTG {
+		fail(w, 400, "ВК и Telegram — ссылка на профиль или имя (@name)")
+		return
+	}
 	var err error
-	if in.Phone == "" && in.Email == "" {
+	if in.Phone == "" && in.Email == "" && in.VK == "" && in.TG == "" {
 		_, err = db.Exec("DELETE FROM teachers WHERE name = ?", in.Name)
 	} else {
-		_, err = db.Exec("INSERT INTO teachers (name, phone, email) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE phone = VALUES(phone), email = VALUES(email)",
-			in.Name, in.Phone, in.Email)
+		_, err = db.Exec(`INSERT INTO teachers (name, phone, email, vk, tg) VALUES (?, ?, ?, ?, ?)
+			ON DUPLICATE KEY UPDATE phone = VALUES(phone), email = VALUES(email), vk = VALUES(vk), tg = VALUES(tg)`,
+			in.Name, in.Phone, in.Email, in.VK, in.TG)
 	}
 	if !serverErr(w, err) {
 		respondOK(w)

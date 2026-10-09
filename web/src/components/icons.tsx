@@ -64,6 +64,9 @@ export const IcoClip = () => (
 export const IcoPhone = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" {...S}><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
 );
+export const IcoVK = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...S}><rect x="2" y="4" width="20" height="16" rx="5"/><path d="M6 9l2.5 6L11 9M13.5 9v6M17.5 9l-4 3 4 3"/></svg>
+);
 export const IcoMail = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" {...S}><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>
 );
@@ -83,6 +86,10 @@ export const IcoEdit = () => (
 
 export const IcoUndo = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" {...S}><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+);
+
+export const IcoScan = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...S}><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><line x1="4" y1="12" x2="20" y2="12"/></svg>
 );
 
 export const ICONS: Record<string, () => JSX.Element> = {

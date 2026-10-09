@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Фронтенд (React + Vite). Бэкенд — Go, каталог server/",
   "scripts": {
-    "dev": "concurrently -n api,web -c magenta,cyan \"go run ./server\" \"vite\"",
+    "dev": "concurrently -n api,ocr,web -c magenta,yellow,cyan \"go run ./server\" \"go run ./ocr\" \"vite\"",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "update-jwks": "node scripts/update-jwks.mjs",
