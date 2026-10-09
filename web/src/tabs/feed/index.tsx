@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, clip, errText, isAdmin, type PageProps } from '../../lib/api';
 import Avatar from '../../components/Avatar';
+import Linkify from '../../components/Linkify';
 import Switch from '../../components/Switch';
 import { useConfirm } from '../../components/Dialog';
 import { IcoPin, IcoPlus, IcoTrash } from '../../components/icons';
@@ -74,7 +75,7 @@ export default function Feed({ me, showMsg }: PageProps) {
                             </>
                         )}
                     </div>
-                    <div className="post-body">{p.body}</div>
+                    <div className="post-body"><Linkify text={p.body} /></div>
                 </article>
             ))}
 

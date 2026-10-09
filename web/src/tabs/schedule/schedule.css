@@ -180,8 +180,24 @@
 .sg-lesson .hw-badges { margin-top: 2px; }
 .lesson-pop .hw-badge, .sg-lesson .hw-badge { margin-top: 1px; }
 .dialog .hw { margin-top: 0; }
+/* эталонное решение — зелёная зона */
+.hw--solution { padding: 8px 12px 12px; border: 1px solid color-mix(in srgb, var(--success-dot) 45%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); }
+/* пустое место под эталонное решение: зелёная пунктирная зона во всю ширину */
+.hw-add-sol { align-self: stretch; justify-content: center; height: 44px; margin-top: 4px; border: 1px dashed color-mix(in srgb, var(--success-dot) 60%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); color: var(--success-dot); font-weight: 600; }
+.hw-add-sol:hover { background: color-mix(in srgb, var(--success-dot) 18%, var(--surface-bright)); }
+.hw--solution .hw-title { color: var(--success-dot); font-weight: 600; }
 
-/* Файлы — капсулами */
+.text-link { color: var(--primary); text-decoration: underline; word-break: break-all; }
+.hw-author { font-size: 11px; color: var(--neutral-text); padding-left: 14px; }
+.hw-progress { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 16px; background: var(--surface-container); font-size: 12px; }
+.hw-progress-name { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+.hw-progress-bar { height: 6px; border-radius: 3px; background: var(--outline-variant); overflow: hidden; }
+.hw-progress-bar i { display: block; height: 100%; background: var(--primary); transition: width .15s linear; }
+.hw-form { display: flex; flex-direction: column; gap: 8px; }
+.hw-contact { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.hw-contact a { color: var(--primary); text-decoration: none; }
+.hw-contact a:hover { text-decoration: underline; }
+/* Файлы и ссылки — капсулами */
 .hw-files { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 /* файл: таблетка-ссылка, под ней — что в нём сделать */
 .hw-file-item { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }

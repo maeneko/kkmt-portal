@@ -25,8 +25,14 @@ const (
 	// Порядок в списках: главный админ, админы, студенты; внутри — по имени.
 	userOrder = "ORDER BY FIELD(role,'owner','admin','moderator','student'), first_name"
 
-	maxFileMB    = 20 // максимальный размер одного файла к домашнему заданию
+	maxFileMB    = 50 // максимальный размер одного файла к домашнему заданию
 	filesPerPair = 5  // сколько файлов можно прикрепить к одной паре
+	filesGeneral = 50 // и к общим материалам
+
+	// Общие материалы — слот ДЗ с этой датой (минимальная DATE в MySQL) и парой 0: так они используют те же таблицы и API.
+	generalDate = "1000-01-01"
+	// Эталонное решение пары N — слот ДЗ с номером пары N+100: текст, файлы и ссылки работают теми же запросами.
+	solutionShift = 100
 )
 
 // displayNameSQL — SQL-выражение имени для показа: свой ник → «Имя Фамилия» → username.
@@ -42,6 +48,19 @@ var (
 
 // validDate проверяет дату в формате ГГГГ-ММ-ДД.
 func validDate(s string) bool { _, err := time.Parse("2006-01-02", s); return err == nil }
+
+// validSlot проверяет слот ДЗ: дата и пара 1–10, эталонное решение пары (её номер + solutionShift) либо общие материалы.
+func validSlot(date string, pair int) bool {
+	return validDate(date) && (pair >= 1 && pair <= 10 || pair > solutionShift && pair <= solutionShift+10 || date == generalDate && pair == 0)
+}
+
+// fileLimit — сколько файлов можно прикрепить к слоту.
+func fileLimit(pair int) int {
+	if pair == 0 {
+		return filesGeneral
+	}
+	return filesPerPair
+}
 
 // ---------- Профиль и пользователи ----------
 
@@ -215,12 +234,20 @@ type LessonChange struct {
 	Remote  bool   `db:"remote" json:"remote"`
 }
 
-// schedule отдаёт всё расписание: пары, замены (с прошлой недели), звонки (обычные и субботние) и дату начала семестра (от неё считается чётность недели).
+// Teacher — контакты преподавателя; Name совпадает со строкой преподавателя в расписании.
+type Teacher struct {
+	Name  string `db:"name" json:"name"`
+	Phone string `db:"phone" json:"phone"`
+	Email string `db:"email" json:"email"`
+}
+
+// schedule отдаёт всё расписание: пары, замены, контакты преподавателей, звонки (обычные и субботние) и дату начала семестра (от неё считается чётность недели).
 func schedule(w http.ResponseWriter, r *http.Request) {
-	lessons, changes, times, satTimes, sem := []Lesson{}, []LessonChange{}, []PairTime{}, []PairTime{}, []string{}
+	lessons, changes, teachers, times, satTimes, sem := []Lesson{}, []LessonChange{}, []Teacher{}, []PairTime{}, []PairTime{}, []string{}
 	err := errors.Join(
 		db.Select(&lessons, "SELECT id, weekday, pair_no, parity, subject, teacher, room, kind, remote FROM lessons ORDER BY weekday, pair_no"),
-		db.Select(&changes, "SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, subject, teacher, room, kind, remote FROM lesson_changes WHERE date >= CURDATE() - INTERVAL 7 DAY"),
+		db.Select(&changes, "SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, subject, teacher, room, kind, remote FROM lesson_changes"),
+		db.Select(&teachers, "SELECT name, phone, email FROM teachers"),
 		db.Select(&times, "SELECT pair_no, start_time, end_time FROM pair_times ORDER BY pair_no"),
 		db.Select(&satTimes, "SELECT pair_no, start_time, end_time FROM pair_times_sat ORDER BY pair_no"),
 		db.Select(&sem, "SELECT v FROM settings WHERE k = 'semester_start'"),
@@ -232,7 +259,7 @@ func schedule(w http.ResponseWriter, r *http.Request) {
 	if len(sem) > 0 {
 		semesterStart = &sem[0]
 	}
-	writeJSON(w, 200, map[string]any{"lessons": lessons, "changes": changes, "times": times, "satTimes": satTimes, "semesterStart": semesterStart})
+	writeJSON(w, 200, map[string]any{"lessons": lessons, "changes": changes, "teachers": teachers, "times": times, "satTimes": satTimes, "semesterStart": semesterStart})
 }
 
 // ---------- Домашние задания и файлы ----------
@@ -243,17 +270,27 @@ type HomeworkFile struct {
 	Name string `db:"name" json:"name"`
 	Size int64  `db:"size" json:"size"`
 	Note string `db:"note" json:"note"` // что именно сделать в файле
+	// кто загрузил или прикрепил файл; заполняется только в listHomework
+	Author string `db:"author" json:"author"`
 }
 
-// homeworkItem — домашнее задание и файлы одной пары на одну дату.
+// HomeworkLink — ссылка, прикреплённая к паре.
+type HomeworkLink struct {
+	ID    int64  `db:"id" json:"id"`
+	URL   string `db:"url" json:"url"`
+	Title string `db:"title" json:"title"`
+}
+
+// homeworkItem — домашнее задание, файлы и ссылки одной пары на одну дату.
 type homeworkItem struct {
 	Date   string         `json:"date"`
 	PairNo int            `json:"pair_no"`
 	Body   string         `json:"body"`
 	Files  []HomeworkFile `json:"files"`
+	Links  []HomeworkLink `json:"links"`
 }
 
-// Дз и файлы за период (для значков в расписании).
+// Дз, файлы и ссылки за период (для значков в расписании).
 func listHomework(w http.ResponseWriter, r *http.Request) {
 	from, to := r.URL.Query().Get("from"), r.URL.Query().Get("to")
 	if !validDate(from) || !validDate(to) {
@@ -270,9 +307,17 @@ func listHomework(w http.ResponseWriter, r *http.Request) {
 		Date   string `db:"date"`
 		PairNo int    `db:"pair_no"`
 	}
+	var links []struct {
+		HomeworkLink
+		Date   string `db:"date"`
+		PairNo int    `db:"pair_no"`
+	}
 	err := errors.Join(
 		db.Select(&hw, "SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, body FROM homework WHERE date BETWEEN ? AND ?", from, to),
-		db.Select(&files, "SELECT id, DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, original_name AS name, size, note FROM homework_files WHERE date BETWEEN ? AND ? ORDER BY id", from, to),
+		db.Select(&files, `SELECT f.id, DATE_FORMAT(f.date, '%Y-%m-%d') AS date, f.pair_no, f.original_name AS name, f.size, f.note,
+				COALESCE(`+displayNameSQL("u.")+`, '') AS author
+			FROM homework_files f LEFT JOIN users u ON u.id = f.uploaded_by WHERE f.date BETWEEN ? AND ? ORDER BY f.id`, from, to),
+		db.Select(&links, "SELECT id, DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, url, title FROM homework_links WHERE date BETWEEN ? AND ? ORDER BY id", from, to),
 	)
 	if serverErr(w, err) {
 		return
@@ -281,7 +326,7 @@ func listHomework(w http.ResponseWriter, r *http.Request) {
 	get := func(date string, pair int) *homeworkItem {
 		key := fmt.Sprint(date, "|", pair)
 		if index[key] == nil {
-			index[key] = &homeworkItem{Date: date, PairNo: pair, Files: []HomeworkFile{}}
+			index[key] = &homeworkItem{Date: date, PairNo: pair, Files: []HomeworkFile{}, Links: []HomeworkLink{}}
 			items = append(items, index[key])
 		}
 		return index[key]
@@ -292,6 +337,10 @@ func listHomework(w http.ResponseWriter, r *http.Request) {
 	for _, f := range files {
 		g := get(f.Date, f.PairNo)
 		g.Files = append(g.Files, f.HomeworkFile)
+	}
+	for _, l := range links {
+		g := get(l.Date, l.PairNo)
+		g.Links = append(g.Links, l.HomeworkLink)
 	}
 	writeJSON(w, 200, map[string]any{"items": items})
 }
@@ -306,7 +355,7 @@ func saveHomework(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !validDate(in.Date) || in.PairNo < 1 || in.PairNo > 10 {
+	if !validSlot(in.Date, in.PairNo) {
 		fail(w, 400, "Некорректная дата или пара")
 		return
 	}
@@ -328,7 +377,7 @@ func uploadFile(w http.ResponseWriter, r *http.Request) {
 	date, name := q.Get("date"), clip(path.Base(q.Get("name")), 200)
 	var pair int
 	fmt.Sscan(q.Get("pair_no"), &pair)
-	if !validDate(date) || pair < 1 || pair > 10 || q.Get("name") == "" {
+	if !validSlot(date, pair) || q.Get("name") == "" {
 		fail(w, 400, "Некорректные параметры")
 		return
 	}
@@ -337,40 +386,43 @@ func uploadFile(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, fmt.Sprintf("Тип .%s не разрешён. Можно: %s", ext, strings.Join(allowedExt, ", ")))
 		return
 	}
-	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxFileMB<<20))
-	var tooBig *http.MaxBytesError
-	if errors.As(err, &tooBig) {
-		fail(w, 413, fmt.Sprintf("Файл слишком большой (до %d МБ)", maxFileMB))
-		return
-	}
-	if serverErr(w, err) {
-		return
-	}
-	if len(data) == 0 {
-		fail(w, 400, "Пустой файл")
-		return
-	}
 	var count int
 	if serverErr(w, db.Get(&count, "SELECT COUNT(*) FROM homework_files WHERE date = ? AND pair_no = ?", date, pair)) {
 		return
 	}
-	if count >= filesPerPair {
-		fail(w, 400, fmt.Sprintf("Не больше %d файлов на пару", filesPerPair))
+	if count >= fileLimit(pair) {
+		fail(w, 400, fmt.Sprintf("Не больше %d файлов", fileLimit(pair)))
 		return
 	}
 	rnd := make([]byte, 16)
 	rand.Read(rnd)
 	stored := hex.EncodeToString(rnd) + "." + ext
-	if serverErr(w, os.WriteFile(filepath.Join(uploadDir, stored), data, 0o644)) {
-		return
-	}
-	res, err := db.Exec("INSERT INTO homework_files (date, pair_no, original_name, stored_name, size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)",
-		date, pair, name, stored, len(data), userOf(r).ID)
+	// пишем сразу на диск: файл до 50 МБ не должен целиком лежать в памяти
+	file, err := os.Create(filepath.Join(uploadDir, stored))
 	if serverErr(w, err) {
 		return
 	}
-	id, _ := res.LastInsertId()
-	writeJSON(w, 200, HomeworkFile{ID: id, Name: name, Size: int64(len(data))})
+	size, err := io.Copy(file, http.MaxBytesReader(w, r.Body, maxFileMB<<20))
+	file.Close()
+	var tooBig *http.MaxBytesError
+	switch {
+	case errors.As(err, &tooBig):
+		err = nil
+		fail(w, 413, fmt.Sprintf("Файл слишком большой (до %d МБ)", maxFileMB))
+	case err == nil && size == 0:
+		fail(w, 400, "Пустой файл")
+	case err == nil:
+		var res sql.Result
+		res, err = db.Exec("INSERT INTO homework_files (date, pair_no, original_name, stored_name, size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)",
+			date, pair, name, stored, size, userOf(r).ID)
+		if err == nil {
+			id, _ := res.LastInsertId()
+			writeJSON(w, 200, HomeworkFile{ID: id, Name: name, Size: size})
+			return
+		}
+	}
+	os.Remove(filepath.Join(uploadDir, stored))
+	serverErr(w, err)
 }
 
 // downloadFile отдаёт файл на скачивание под его исходным именем.
@@ -456,7 +508,7 @@ func attachFile(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !validDate(in.Date) || in.PairNo < 1 || in.PairNo > 10 {
+	if !validSlot(in.Date, in.PairNo) {
 		fail(w, 400, "Некорректные параметры")
 		return
 	}
@@ -474,8 +526,8 @@ func attachFile(w http.ResponseWriter, r *http.Request) {
 	if serverErr(w, err) {
 		return
 	}
-	if count >= filesPerPair {
-		fail(w, 400, fmt.Sprintf("Не больше %d файлов на пару", filesPerPair))
+	if count >= fileLimit(in.PairNo) {
+		fail(w, 400, fmt.Sprintf("Не больше %d файлов", fileLimit(in.PairNo)))
 		return
 	}
 	res, err := db.Exec("INSERT INTO homework_files (date, pair_no, original_name, stored_name, size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)",
@@ -485,6 +537,62 @@ func attachFile(w http.ResponseWriter, r *http.Request) {
 	}
 	f.ID, _ = res.LastInsertId()
 	writeJSON(w, 200, f)
+}
+
+// addLink прикрепляет ссылку к паре; только http(s), чтобы в href не попал javascript:.
+func addLink(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Date   string `json:"date"`
+		PairNo int    `json:"pair_no"`
+		URL    string `json:"url"`
+		Title  string `json:"title"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	l := HomeworkLink{URL: clip(in.URL, 1000), Title: clip(in.Title, 200)}
+	if !validSlot(in.Date, in.PairNo) || !strings.HasPrefix(l.URL, "http://") && !strings.HasPrefix(l.URL, "https://") {
+		fail(w, 400, "Нужна ссылка, начинающаяся с http:// или https://")
+		return
+	}
+	res, err := db.Exec("INSERT INTO homework_links (date, pair_no, url, title, created_by) VALUES (?, ?, ?, ?, ?)",
+		in.Date, in.PairNo, l.URL, l.Title, userOf(r).ID)
+	if serverErr(w, err) {
+		return
+	}
+	l.ID, _ = res.LastInsertId()
+	writeJSON(w, 200, l)
+}
+
+// deleteLink удаляет ссылку.
+func deleteLink(w http.ResponseWriter, r *http.Request) {
+	_, err := db.Exec("DELETE FROM homework_links WHERE id = ?", r.PathValue("id"))
+	if !serverErr(w, err) {
+		respondOK(w)
+	}
+}
+
+// saveTeacher сохраняет телефон и почту преподавателя; если оба пустые — запись удаляется.
+func saveTeacher(w http.ResponseWriter, r *http.Request) {
+	var in Teacher
+	if !decode(w, r, &in) {
+		return
+	}
+	in.Name, in.Phone, in.Email = clip(in.Name, 200), clip(in.Phone, 30), clip(in.Email, 100)
+	if in.Name == "" {
+		fail(w, 400, "Не указан преподаватель")
+		return
+	}
+	var err error
+	if in.Phone == "" && in.Email == "" {
+		_, err = db.Exec("DELETE FROM teachers WHERE name = ?", in.Name)
+	} else {
+		_, err = db.Exec("INSERT INTO teachers (name, phone, email) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE phone = VALUES(phone), email = VALUES(email)",
+			in.Name, in.Phone, in.Email)
+	}
+	if !serverErr(w, err) {
+		respondOK(w)
+	}
 }
 
 // ---------- Админка ----------
@@ -677,7 +785,6 @@ func saveSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 // saveWeek сохраняет замены на неделю [from, to] целиком: старые замены в диапазоне удаляются, присланные записываются.
-// Прошедшие дни не трогаются: их замены не удаляются, присланные на них — пропускаются.
 func saveWeek(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		From    string         `json:"from"`
@@ -704,14 +811,10 @@ func saveWeek(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	today := time.Now().Format("2006-01-02")
-	_, err = tx.Exec("DELETE FROM lesson_changes WHERE date BETWEEN ? AND ? AND date >= ?", in.From, in.To, today)
+	_, err = tx.Exec("DELETE FROM lesson_changes WHERE date BETWEEN ? AND ?", in.From, in.To)
 	for _, c := range in.Changes {
 		if err != nil {
 			break
-		}
-		if c.Date < today {
-			continue
 		}
 		_, err = tx.Exec("REPLACE INTO lesson_changes (date, pair_no, subject, teacher, room, kind, remote) VALUES (?, ?, ?, ?, ?, ?, ?)",
 			c.Date, c.PairNo, c.Subject, c.Teacher, c.Room, c.Kind, c.Remote)

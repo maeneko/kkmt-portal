@@ -61,6 +61,9 @@ export const IcoNote = () => (
 export const IcoClip = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" {...S}><path d="m21 11-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg>
 );
+export const IcoLink = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...S}><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+);
 export const IcoDownload = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" {...S}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 );

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, errText, isModerator, type PageProps } from '../../lib/api';
-import { IcoCalendar, IcoClip, IcoEdit, IcoNote } from '../../components/icons';
-import HomeworkBlock, { type HwItem } from './HomeworkBlock';
+import { IcoCalendar, IcoClip, IcoEdit, IcoLink, IcoNote, IcoPlus } from '../../components/icons';
+import HomeworkBlock, { SOLUTION, hasContent, type HwItem } from './HomeworkBlock';
+import TeacherInfo from './TeacherInfo';
 import ScheduleEditor from './ScheduleEditor';
 import DatePicker from './DatePicker';
 import './schedule.css';
@@ -10,7 +11,8 @@ export interface Lesson { id?: number; weekday: number; pair_no: number; parity:
 // Замена пары на дату (правка «только этой недели»); пустой subject — пары нет
 export interface LessonChange { date: string; pair_no: number; subject: string; teacher: string; room: string; kind: string; remote: boolean }
 export interface PairTime { pair_no: number; start_time: string; end_time: string }
-interface Data { lessons: Lesson[]; changes?: LessonChange[]; times: PairTime[]; satTimes?: PairTime[]; semesterStart: string | null }
+export interface Teacher { name: string; phone: string; email: string }
+interface Data { lessons: Lesson[]; changes?: LessonChange[]; teachers?: Teacher[]; times: PairTime[]; satTimes?: PairTime[]; semesterStart: string | null }
 
 const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 const SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
@@ -50,6 +52,8 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
     });
     const [sel, setSel] = useState<{ lesson: Lesson; day: string; date: string; anchor: HTMLElement; pop: boolean } | null>(null);
     const [hw, setHw] = useState<Record<string, HwItem>>({});
+    // пара («дата|номер»), у которой модератор открыл пустую зону «Эталонное решение»
+    const [solOpen, setSolOpen] = useState('');
     const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
     const popRef = useRef<HTMLDivElement>(null);
     // Десктоп — попап рядом с нажатой парой, телефон — окно по центру
@@ -129,15 +133,16 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
             .catch(() => { /* значки не критичны */ });
     }, [weekDates]);
     useEffect(() => { loadHw(); }, [loadHw]);
-    // Метки в ячейке: «добавлено дз» и «добавлено файлов: N»
+    // Метки в ячейке: «добавлено дз», «добавлено файлов: N» и «добавлено ссылок: N»
     const hwBadge = (date: string, pair: number) => {
         const h = hw[`${date}|${pair}`];
-        const n = h?.files.length ?? 0;
-        if (!h || (!h.body && n === 0)) return null;
+        const n = h?.files.length ?? 0, nl = h?.links.length ?? 0;
+        if (!h || (!h.body && n === 0 && nl === 0)) return null;
         return (
             <span className="hw-badges">
                 {h.body && <span className="hw-badge" title="Добавлено домашнее задание"><IcoNote /></span>}
                 {n > 0 && <span className="hw-badge" title={`Добавлено файлов: ${n}`}><IcoClip />{n}</span>}
+                {nl > 0 && <span className="hw-badge" title={`Добавлено ссылок: ${nl}`}><IcoLink />{nl}</span>}
             </span>
         );
     };
@@ -300,14 +305,15 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
 
             {sel && (() => {
                 const l = sel.lesson, t = timeOf(l.weekday - 1, l.pair_no);
-                const rowsInfo: [string, string][] = [
+                const rowsInfo: [string, ReactNode][] = [
                     ['День', `${sel.day}, ${sel.date.slice(8)}.${sel.date.slice(5, 7)}`],
                     ['Пара', `${l.pair_no}${t ? ` · ${t.start_time}–${t.end_time}` : ''}`],
-                    ['Преподаватель', l.teacher || '—'],
+                    ['Преподаватель', l.teacher ? <TeacherInfo key={l.teacher} name={l.teacher} contact={data.teachers?.find(x => x.name === l.teacher)} canEdit={isModerator(me)} onSaved={load} showMsg={showMsg} /> : '—'],
                     ['Аудитория', l.room || '—'],
                     ['Формат', l.remote ? 'Дистанционно' : 'Очно'],
                     ['Неделя', l.changed ? 'Только эта (замена)' : l.parity === 'all' ? 'Каждая' : l.parity === 'odd' ? 'Нечётная' : 'Чётная'],
                 ];
+                const slot = `${sel.date}|${l.pair_no}`, sol = hw[`${sel.date}|${l.pair_no + SOLUTION}`];
                 const info = (
                     <>
                         <dl className="lesson-info">
@@ -315,6 +321,10 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
                         </dl>
                         <HomeworkBlock date={sel.date} pair={l.pair_no} item={hw[`${sel.date}|${l.pair_no}`]} canEdit={isModerator(me)} onChanged={loadHw} showMsg={showMsg}
                                        subject={l.subject} lessons={data.lessons} semesterStart={data.semesterStart} />
+                        {(hasContent(sol) || isModerator(me) && solOpen === slot)
+                            ? <HomeworkBlock date={sel.date} pair={l.pair_no + SOLUTION} item={sol} canEdit={isModerator(me)} onChanged={loadHw} showMsg={showMsg}
+                                             subject={l.subject} lessons={data.lessons} semesterStart={data.semesterStart} />
+                            : isModerator(me) && <button className="btn btn--tonal btn--sm hw-add-sol" onClick={() => setSolOpen(slot)}><IcoPlus /> Добавить эталонное решение</button>}
                     </>
                 );
                 if (sel.pop) {

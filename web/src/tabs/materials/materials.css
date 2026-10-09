@@ -27,6 +27,9 @@
 /* зоны дня: сверху файлы (тон primary), снизу задание (нейтральный тон) */
 .mat-zone { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 16px; background: var(--surface-container); }
 .mat-zone--files { background: color-mix(in srgb, var(--primary) 8%, var(--surface-bright)); }
+.mat-zone--solution { background: color-mix(in srgb, var(--success-dot) 12%, var(--surface-bright)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success-dot) 40%, transparent); }
+.mat-zone--solution .mat-zone-title { color: var(--success-dot); font-weight: 600; }
+.mat-zone--solution .hw-note { background: var(--surface-bright); }
 .mat-zone-title { font-size: 12px; font-weight: 500; letter-spacing: .02em; color: var(--label); }
 .mat-zone .hw-note { background: var(--surface-bright); }
 .mat-zone .hw-body { font-size: 14px; }
@@ -74,14 +77,13 @@
 .mat-back { width: 40px; height: 40px; }
 .mat-back svg { transform: rotate(90deg); }
 .mat-page-title { font-size: 18px; font-weight: 500; line-height: 1.3; }
-/* карточки дней — квадраты; зоны прокручиваются внутри, если не помещаются; дата — справа внизу */
+/* карточки дней — не ниже 300px, растут под содержимое и выравниваются по ряду (с aspect-ratio ряд не выравнивался); дата — справа внизу */
 .mat-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-.mat-item { aspect-ratio: 1; min-width: 0; overflow: hidden; align-items: flex-start; gap: 10px; padding: 16px; }
-.mat-item .mat-zone { align-self: stretch; min-height: 0; overflow-y: auto; scrollbar-width: thin; overflow-anchor: none; }
-.mat-item .mat-zone--files { flex: 1 1 auto; }
-.mat-item .mat-zone:not(.mat-zone--files) { flex: 0 1 auto; max-height: 40%; }
-.mat-item .mat-zone:only-of-type { flex: 1 1 auto; max-height: none; }
-.mat-item .mat-zone-title { flex-shrink: 0; }
+.mat-item { min-height: 300px; min-width: 0; align-items: flex-start; gap: 10px; padding: 16px; }
+/* зоны не растягиваются, когда соседняя карточка в ряду выше: свободное место уходит перед кнопкой даты (у неё margin-top: auto) */
+.mat-item .mat-zone { align-self: stretch; flex: 0 0 auto; }
+.mat-item .hw--solution, .mat-item .hw-add-sol { align-self: stretch; }
+.tree-leaf .mat-zone--solution, .tree-leaf .hw--solution, .tree-leaf .hw-add-sol { grid-column: 1 / -1; grid-row: auto; }
 .mat-item .mat-date { align-self: flex-end; margin-top: auto; flex-shrink: 0; height: 32px; padding: 0 12px 0 10px; }
 @media (max-width: 640px) {
     .mat-top { flex-direction: column; align-items: stretch; gap: 8px; }
@@ -96,3 +98,6 @@
     .mat-days { grid-template-columns: 1fr; }
     .mat-item { padding: 14px; }
 }
+
+/* Общие материалы в списке: один блок на всю ширину */
+.tree-leaf > .hw { grid-column: 1 / -1; }

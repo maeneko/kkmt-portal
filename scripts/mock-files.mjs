@@ -1,7 +1,8 @@
-// Мок-данные для проверки файлов и «Материалов»: ДЗ и файлы к парам за 3 прошлые недели и текущую.
+// Мок-данные для проверки файлов и «Материалов»: ДЗ и файлы к парам за 3 прошлые недели и текущую,
+// а к каждому второму мок-заданию — эталонное решение (текст, файл и ссылка).
 // Нужен запущенный сервер с DEV_LOGIN=1; входит как dev-пользователь (по умолчанию tgId 1 — админ).
 //   node scripts/mock-files.mjs          — добавить (пары, где уже есть файлы, пропускаются)
-//   node scripts/mock-files.mjs --clean  — удалить всё мок-ДЗ и файлы «mock-*»
+//   node scripts/mock-files.mjs --clean  — удалить всё мок-ДЗ, файлы «mock-*» и мок-ссылки
 const API = process.env.API ?? 'http://localhost:3000/api';
 const clean = process.argv.includes('--clean');
 
@@ -22,12 +23,13 @@ const to = new Date(monday); to.setDate(monday.getDate() + 5);
 const { items } = await api('GET', `/homework?from=${iso(from)}&to=${iso(to)}`);
 
 if (clean) {
-    let files = 0, hw = 0;
+    let files = 0, hw = 0, links = 0;
     for (const it of items) {
         for (const f of it.files) if (f.name.startsWith('mock-')) { await api('DELETE', `/homework/files/${f.id}`); files++; }
+        for (const l of it.links) if (l.title.startsWith('Мок')) { await api('DELETE', `/homework/links/${l.id}`); links++; }
         if (it.body.startsWith('Мок:')) { await api('PUT', '/homework', { date: it.date, pair_no: it.pair_no, body: '' }); hw++; }
     }
-    console.log(`Удалено: файлов ${files}, ДЗ ${hw}`);
+    console.log(`Удалено: файлов ${files}, ссылок ${links}, ДЗ и решений ${hw}`);
     process.exit(0);
 }
 
@@ -73,4 +75,19 @@ for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
         }
     }
 }
-console.log(`Добавлено файлов: ${added}. Удалить: node scripts/mock-files.mjs --clean`);
+
+// Эталонное решение пары N лежит в слоте с номером пары N + 100
+const SOL = 100;
+const { items: all } = await api('GET', `/homework?from=${iso(from)}&to=${iso(to)}`);
+const solved = new Set(all.filter(i => i.pair_no > SOL && (i.body || i.files.length || i.links.length)).map(i => `${i.date}|${i.pair_no - SOL}`));
+let sols = 0, k = 0;
+for (const it of all.filter(i => i.pair_no <= SOL && i.body.startsWith('Мок:'))) {
+    if (k++ % 2 || solved.has(`${it.date}|${it.pair_no}`)) continue; // каждое второе, без повторов
+    const pair = it.pair_no + SOL;
+    await api('PUT', '/homework', { date: it.date, pair_no: pair, body: `Мок: решение — сначала разобрать пример из лекции, затем повторить шаги 1–3 и сверить ответ.` });
+    const f = await api('POST', `/homework/files?date=${it.date}&pair_no=${pair}&name=mock-solution-${it.date}-${it.pair_no}.pdf`, pdf(`Mock solution ${it.date} pair ${it.pair_no}`), 'application/octet-stream');
+    await api('PATCH', `/homework/files/${f.id}`, { note: 'Мок: эталонный ответ' });
+    await api('POST', '/homework/links', { date: it.date, pair_no: pair, url: 'https://example.com/solution', title: 'Мок: разбор решения' });
+    sols++;
+}
+console.log(`Добавлено файлов: ${added}, решений: ${sols}. Удалить: node scripts/mock-files.mjs --clean`);

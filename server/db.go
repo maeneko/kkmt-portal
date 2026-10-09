@@ -122,6 +122,22 @@ var schema = []string{
         INDEX idx_slot (date, pair_no),
         FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
     ) CHARACTER SET utf8mb4`,
+	`CREATE TABLE IF NOT EXISTS homework_links (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        date DATE NOT NULL,
+        pair_no TINYINT NOT NULL,
+        url VARCHAR(1000) NOT NULL,
+        title VARCHAR(200) NOT NULL DEFAULT '',
+        created_by INT NULL,
+        INDEX idx_slot (date, pair_no),
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) CHARACTER SET utf8mb4`,
+	// Контакты преподавателей; name — как в lessons.teacher
+	`CREATE TABLE IF NOT EXISTS teachers (
+        name VARCHAR(200) PRIMARY KEY,
+        phone VARCHAR(30) NOT NULL DEFAULT '',
+        email VARCHAR(100) NOT NULL DEFAULT ''
+    ) CHARACTER SET utf8mb4`,
 	// Замены пар на конкретную дату (правка «только этой недели»); пустой subject — пары нет
 	`CREATE TABLE IF NOT EXISTS lesson_changes (
         date DATE NOT NULL,

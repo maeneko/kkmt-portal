@@ -10,7 +10,6 @@ const KEYS = ['subject', 'teacher', 'room', 'kind'] as const;
 const pick = (l?: Fields): Fields => (l ? { subject: l.subject, teacher: l.teacher, room: l.room, kind: l.kind, remote: !!l.remote } : EMPTY);
 const same = (a: Fields, b: Fields) => KEYS.every(k => a[k].trim() === b[k].trim()) && !!a.remote === !!b.remote;
 const ddmm = (d: string) => `${d.slice(8)}.${d.slice(5, 7)}`;
-const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const uniq = (list: string[]) => [...new Set(list.map(s => s.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
 
 // Редактор расписания в виде карточки дня (модераторы и выше): те же строки пар, но текст редактируется прямо в них.
@@ -35,8 +34,6 @@ export default function ScheduleEditor({ mode, day, dayName, timeOf, lessons, ch
     const teacherItems = uniq(known.map(l => l.teacher)).map(t => ({ title: t, sub: uniq(known.filter(l => l.teacher === t).map(l => l.subject)).join(' · ') }));
     const [sheet, setSheet] = useState<{ title: string; hint: string; empty: string; value: string; items: Item[]; set: (v: string) => void } | null>(null);
 
-    // Прошедшие дни недели только для просмотра (сервер их тоже не меняет)
-    const locked = mode === 'week' && weekDates[day] < iso(new Date());
     // Постоянное расписание правится по неделям: видны пары выбранной чётности и «каждую неделю»
     const [wp, setWp] = useState<'odd' | 'even'>(parity);
     const otherP = wp === 'odd' ? 'even' : 'odd';
@@ -126,13 +123,12 @@ export default function ScheduleEditor({ mode, day, dayName, timeOf, lessons, ch
                 </div>
             )}
             <p className="hint">
-                {locked ? 'День уже прошёл — изменить нельзя.'
-                    : mode === 'week' ? 'Только на эту неделю. «Нет пары» в предмете — пара отменена.'
+                {mode === 'week' ? 'Только на эту неделю. «Нет пары» в предмете — пара отменена.'
                     : `Пары ${wp === 'odd' ? 'нечётной' : 'чётной'} недели. Без отметки «Только…» пара идёт каждую неделю.`}
             </p>
-            {!locked && dayFilled.length > 0 && <div>{remoteChip('Весь день дистант', dayRemote, toggleDay)}</div>}
+            {dayFilled.length > 0 && <div>{remoteChip('Весь день дистант', dayRemote, toggleDay)}</div>}
 
-            <fieldset className="day-rows se-rows" disabled={locked}>
+            <fieldset className="day-rows se-rows">
                 {mode === 'week' ? slots.map(n => {
                     const f = week[day][n - 1], b = base(day, n), changed = !same(f, b);
                     // метка «замена» включается сама, если предмет, преподаватель или аудитория отличаются от расписания
