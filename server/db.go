@@ -132,6 +132,14 @@ var schema = []string{
         INDEX idx_slot (date, pair_no),
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     ) CHARACTER SET utf8mb4`,
+	// Общие материалы; описание, файлы и ссылки лежат в слоте ДЗ с датой 1000-01-01 + id дней (см. generalDate)
+	`CREATE TABLE IF NOT EXISTS materials (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(200) NOT NULL,
+        created_by INT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) CHARACTER SET utf8mb4`,
 	// Контакты преподавателей; name — как в lessons.teacher
 	`CREATE TABLE IF NOT EXISTS teachers (
         name VARCHAR(200) PRIMARY KEY,

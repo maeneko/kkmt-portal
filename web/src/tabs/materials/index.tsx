@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, errText, isModerator, type PageProps } from '../../lib/api';
-import { IcoCalendar, IcoChevron, IcoFolder, IcoPlus } from '../../components/icons';
+import { useConfirm } from '../../components/Dialog';
+import { IcoCalendar, IcoChevron, IcoFolder, IcoPlus, IcoTrash } from '../../components/icons';
 import { subjectAt, type Lesson } from '../schedule';
 import Linkify from '../../components/Linkify';
 import HomeworkBlock, { FileList, GENERAL, LinkList, SOLUTION, hasContent, type HwItem } from '../schedule/HomeworkBlock';
@@ -10,6 +11,9 @@ interface Subject { name: string; items: HwItem[]; files: number; links: number 
 type Sort = 'name' | 'date';
 
 const GENERAL_NAME = 'Общие материалы';
+// Общие материалы лежат в слотах ДЗ с датами от GENERAL до этой (так же на сервере); у каждого материала своя дата
+const GENERAL_END = '1099-12-31';
+interface Material { id: number; title: string; date: string }
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const VIEW_KEY = 'kkmt.materialsView';
@@ -21,12 +25,24 @@ const fmtDate = (s: string) => new Date(`${s}T00:00:00`).toLocaleDateString('ru-
 // Дз хранится по дате и номеру пары, поэтому предмет находим по расписанию: день недели + чётность недели.
 export default function Materials({ me, showMsg, goTo }: PageProps) {
     const [subjects, setSubjects] = useState<Subject[] | null>(null);
-    // общие материалы — не привязаны ни к предмету, ни к дате
-    const [general, setGeneral] = useState<HwItem | undefined>();
+    // общие материалы — не привязаны ни к предмету, ни к дате; описание, файлы и ссылки каждого лежат в его слоте (по date)
+    const [ask, dialog] = useConfirm();
+    const [materials, setMaterials] = useState<Material[]>([]);
+    const [general, setGeneral] = useState<Record<string, HwItem>>({});
+    const [newTitle, setNewTitle] = useState('');
     const loadGeneral = useCallback(() => {
-        api<{ items: HwItem[] }>('GET', `/homework?from=${GENERAL}&to=${GENERAL}`).then(d => setGeneral(d.items[0])).catch(e => showMsg(errText(e)));
+        Promise.all([api<Material[]>('GET', '/materials'), api<{ items: HwItem[] }>('GET', `/homework?from=${GENERAL}&to=${GENERAL_END}`)])
+            .then(([list, d]) => { setMaterials(list); setGeneral(Object.fromEntries(d.items.map(i => [i.date, i]))); })
+            .catch(e => showMsg(errText(e)));
     }, [showMsg]);
     useEffect(() => { loadGeneral(); }, [loadGeneral]);
+    const addMaterial = async () => {
+        try { await api('POST', '/materials', { title: newTitle }); setNewTitle(''); loadGeneral(); } catch (e) { showMsg(errText(e)); }
+    };
+    const removeMaterial = async (m: Material) => {
+        if (!await ask({ title: 'Удалить материал?', body: `«${m.title}» удалится вместе с описанием, файлами и ссылками.`, confirm: 'Удалить', danger: true })) return;
+        try { await api('DELETE', `/materials/${m.id}`); loadGeneral(); } catch (e) { showMsg(errText(e)); }
+    };
     // раскрытые предметы и дни («предмет|дата|пара»)
     const [open, setOpen] = useState<Set<string>>(new Set());
     const flip = (k: string) => setOpen(o => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n; });
@@ -89,9 +105,27 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
         return [hw > 0 && `Заданий: ${hw}`, s.files > 0 && `Файлов: ${s.files}`, s.links > 0 && `Ссылок: ${s.links}`].filter(Boolean).join(' · ');
     };
     const showGeneral = GENERAL_NAME.toLowerCase().includes(query.trim().toLowerCase());
-    const generalSummary = [general?.body && 'есть описание', general?.files.length && `Файлов: ${general.files.length}`, general?.links.length && `Ссылок: ${general.links.length}`].filter(Boolean).join(' · ');
+    const generalSummary = materials.length ? `Материалов: ${materials.length}` : '';
+    // список общих материалов: у каждого название, описание, файлы и ссылки; модератор добавляет и удаляет
     const generalBlock = (
-        <HomeworkBlock date={GENERAL} pair={0} item={general} canEdit={isModerator(me)} onChanged={loadGeneral} showMsg={showMsg} subject="" lessons={[]} semesterStart={null} />
+        <div className="stack">
+            {isModerator(me) && (
+                <form className="mat-new" onSubmit={e => { e.preventDefault(); addMaterial(); }}>
+                    <input className="field" maxLength={200} placeholder="Название нового материала" value={newTitle} onChange={e => setNewTitle(e.target.value)} />
+                    <button className="btn btn--primary" disabled={!newTitle.trim()}><IcoPlus /> Добавить</button>
+                </form>
+            )}
+            {materials.length === 0 && <p className="hw-empty">Материалов пока нет</p>}
+            {materials.map(m => (
+                <section key={m.id} className="card">
+                    <div className="row">
+                        <span className="card-title grow">{m.title}</span>
+                        {isModerator(me) && <button className="btn-icon btn-icon--danger" aria-label={`Удалить ${m.title}`} onClick={() => removeMaterial(m)}><IcoTrash /></button>}
+                    </div>
+                    <HomeworkBlock date={m.date} pair={0} item={general[m.date]} canEdit={isModerator(me)} onChanged={loadGeneral} showMsg={showMsg} subject="" lessons={[]} semesterStart={null} />
+                </section>
+            ))}
+        </div>
     );
     // содержимое дня — общее для обоих видов: сверху файлы, снизу задание, кнопка перехода в расписание
     const dayBody = (i: HwItem, label: string) => (
@@ -136,7 +170,8 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                 <button className="btn-icon btn-icon--neutral mat-back" aria-label="Назад к предметам" onClick={() => setCur(null)}><IcoChevron /></button>
                 <h3 className="mat-page-title grow">{GENERAL_NAME}</h3>
             </div>
-            <section className="card">{generalBlock}</section>
+            {generalBlock}
+            {dialog}
         </div>
     );
 
@@ -246,6 +281,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                     })}
                 </ul>
             )}
+            {dialog}
         </div>
     );
 }

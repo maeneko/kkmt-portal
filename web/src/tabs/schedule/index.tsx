@@ -87,8 +87,12 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
         const scroll = (e: Event) => { if (!popRef.current?.contains(e.target as Node)) setSel(null); };
         document.addEventListener('keydown', key);
         document.addEventListener('mousedown', down);
-        window.addEventListener('resize', close);
-        window.addEventListener('scroll', scroll, true);
+        // Только у десктопного попапа (он привязан к паре и «уезжает» при прокрутке). У телефонного окна по центру
+        // resize и scroll приходят сами (панель браузера, экранная клавиатура, инерция прокрутки) и закрывали его посреди нажатия.
+        if (sel.pop) {
+            window.addEventListener('resize', close);
+            window.addEventListener('scroll', scroll, true);
+        }
         sel.anchor.classList.add('is-sel');
         return () => {
             document.removeEventListener('keydown', key);

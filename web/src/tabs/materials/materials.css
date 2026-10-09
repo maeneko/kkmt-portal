@@ -101,3 +101,7 @@
 
 /* Общие материалы в списке: один блок на всю ширину */
 .tree-leaf > .hw { grid-column: 1 / -1; }
+
+/* форма добавления общего материала */
+.mat-new { display: flex; gap: 8px; align-items: center; }
+.mat-new .field { flex: 1; min-width: 0; }

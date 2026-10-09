@@ -246,6 +246,8 @@ select.field { appearance: none; padding-right: 12px; }
 .brand-sub { font-size: 12px; line-height: 1.2; color: var(--neutral-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .header-right { display: flex; align-items: center; gap: 8px; }
 .theme-toggle--inline { position: static; }
+/* режим админа включён — кнопка залита */
+.theme-toggle[aria-pressed='true'] { background: var(--primary-container); color: var(--on-primary-container); border-color: transparent; }
 
 .tab-menu { position: relative; }
 .tab-menu-btn {

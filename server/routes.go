@@ -124,6 +124,18 @@ func homeworkRoutes(m *http.ServeMux) {
 		"PUT /api/teachers",
 		moderator(saveTeacher),
 	)
+	m.HandleFunc(
+		"GET /api/materials",
+		authed(listMaterials),
+	)
+	m.HandleFunc(
+		"POST /api/materials",
+		moderator(createMaterial),
+	)
+	m.HandleFunc(
+		"DELETE /api/materials/{id}",
+		moderator(deleteMaterial),
+	)
 }
 
 func adminRoutes(m *http.ServeMux) {

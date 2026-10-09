@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
-import { api, isAdmin, type Focus, type Me } from './lib/api';
-import { IcoMoon, IcoSun } from './components/icons';
+import { api, isAdmin, isModerator, type Focus, type Me } from './lib/api';
+import { IcoMoon, IcoShield, IcoSun } from './components/icons';
 import Logo from './components/Logo';
 import BottomNav from './components/BottomNav';
 import TabMenu from './components/TabMenu';
@@ -9,6 +9,7 @@ import Login from './components/Login';
 import { TABS } from './tabs';
 
 const THEME_KEY = 'kkmt.theme';
+const ADMIN_KEY = 'kkmt.adminMode';
 
 // Оболочка: сессия, тема, шапка (капсула + выпадающий список вкладок) и переключение вкладок из реестра TABS.
 export default function App() {
@@ -22,6 +23,14 @@ export default function App() {
     const [msg, setMsg] = useState('');
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
         try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'; } catch { return 'light'; }
+    });
+    // Режим админа (у модераторов и выше): выключенный прячет все кнопки правки, интерфейс как у студента
+    const [adminMode, setAdminMode] = useState(() => {
+        try { return localStorage.getItem(ADMIN_KEY) !== 'off'; } catch { return true; }
+    });
+    const toggleAdminMode = () => setAdminMode(on => {
+        try { localStorage.setItem(ADMIN_KEY, on ? 'off' : 'on'); } catch { /* не критично */ }
+        return !on;
     });
     const msgTimer = useRef<number>();
 
@@ -56,7 +65,9 @@ export default function App() {
         setMe(null); setActiveTab(TABS[0].id);
     };
 
-    const tabs = TABS.filter(t => !t.adminOnly || (me && isAdmin(me)));
+    // вкладки и страницы видят пользователя с учётом режима админа; сервер проверяет права по настоящей роли
+    const view = me && !adminMode ? { ...me, role: 'student' as const } : me;
+    const tabs = TABS.filter(t => !t.adminOnly || (view && isAdmin(view)));
     const tab = tabs.find(t => t.id === activeTab) ?? tabs[0];
     // Заголовок «прокручивается» при смене вкладки: старый уезжает, новый въезжает;
     // вкладка правее — снизу вверх, левее — сверху вниз
@@ -90,6 +101,12 @@ export default function App() {
                             </span>
                         </button>
                         <div className="header-right">
+                            {isModerator(me) && (
+                                <button className="theme-toggle theme-toggle--inline" aria-pressed={adminMode} title="Режим админа" aria-label={adminMode ? 'Выключить режим админа' : 'Включить режим админа'}
+                                        onClick={toggleAdminMode}>
+                                    <IcoShield />
+                                </button>
+                            )}
                             <button className="theme-toggle theme-toggle--inline" aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
                                     onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}>
                                 {theme === 'dark' ? <IcoSun /> : <IcoMoon />}
@@ -103,7 +120,7 @@ export default function App() {
                             {titleFrom.current && <span className="pt-out" aria-hidden>{titleFrom.current.label}</span>}
                             <span className="pt-in">{tab.label}</span>
                         </h2>
-                        <tab.Page key={`page-${tab.id}`} me={me} reloadMe={reloadMe} showMsg={showMsg} logout={logout} goTo={goTo} focus={focus} />
+                        <tab.Page key={`page-${tab.id}`} me={view ?? me} reloadMe={reloadMe} showMsg={showMsg} logout={logout} goTo={goTo} focus={focus} />
                     </main>
 
                     <BottomNav tabs={tabs} active={tab.id} onNavigate={goTo} />

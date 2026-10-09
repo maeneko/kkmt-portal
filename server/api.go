@@ -29,8 +29,10 @@ const (
 	filesPerPair = 5  // сколько файлов можно прикрепить к одной паре
 	filesGeneral = 50 // и к общим материалам
 
-	// Общие материалы — слот ДЗ с этой датой (минимальная DATE в MySQL) и парой 0: так они используют те же таблицы и API.
+	// Общий материал №N — слот ДЗ с парой 0 и датой generalDate + N дней (но не позже generalEnd):
+	// так текст, файлы и ссылки материала используют те же таблицы и API, что и ДЗ.
 	generalDate = "1000-01-01"
+	generalEnd  = "1099-12-31"
 	// Эталонное решение пары N — слот ДЗ с номером пары N+100: текст, файлы и ссылки работают теми же запросами.
 	solutionShift = 100
 )
@@ -49,9 +51,9 @@ var (
 // validDate проверяет дату в формате ГГГГ-ММ-ДД.
 func validDate(s string) bool { _, err := time.Parse("2006-01-02", s); return err == nil }
 
-// validSlot проверяет слот ДЗ: дата и пара 1–10, эталонное решение пары (её номер + solutionShift) либо общие материалы.
+// validSlot проверяет слот ДЗ: дата и пара 1–10, эталонное решение пары (её номер + solutionShift) либо общий материал.
 func validSlot(date string, pair int) bool {
-	return validDate(date) && (pair >= 1 && pair <= 10 || pair > solutionShift && pair <= solutionShift+10 || date == generalDate && pair == 0)
+	return validDate(date) && (pair >= 1 && pair <= 10 || pair > solutionShift && pair <= solutionShift+10 || pair == 0 && date > generalDate && date <= generalEnd)
 }
 
 // fileLimit — сколько файлов можно прикрепить к слоту.
@@ -451,17 +453,23 @@ func downloadFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", st.ModTime(), file)
 }
 
+// removeUnused удаляет файл с диска, если на него не осталось ссылок: один файл может быть прикреплён к нескольким парам.
+func removeUnused(stored string) error {
+	var left int
+	if err := db.Get(&left, "SELECT COUNT(*) FROM homework_files WHERE stored_name = ?", stored); err != nil || left > 0 {
+		return err
+	}
+	os.Remove(filepath.Join(uploadDir, stored))
+	return nil
+}
+
 // deleteFile удаляет запись о файле и сам файл с диска.
 func deleteFile(w http.ResponseWriter, r *http.Request) {
 	var stored string
 	err := db.Get(&stored, "SELECT stored_name FROM homework_files WHERE id = ?", r.PathValue("id"))
 	if err == nil {
 		if _, err = db.Exec("DELETE FROM homework_files WHERE id = ?", r.PathValue("id")); err == nil {
-			// один файл на диске может быть прикреплён к нескольким парам — удаляем, когда ссылок не осталось
-			var left int
-			if err = db.Get(&left, "SELECT COUNT(*) FROM homework_files WHERE stored_name = ?", stored); err == nil && left == 0 {
-				os.Remove(filepath.Join(uploadDir, stored))
-			}
+			err = removeUnused(stored)
 		}
 	} else if errors.Is(err, sql.ErrNoRows) {
 		err = nil
@@ -589,6 +597,82 @@ func saveTeacher(w http.ResponseWriter, r *http.Request) {
 	} else {
 		_, err = db.Exec("INSERT INTO teachers (name, phone, email) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE phone = VALUES(phone), email = VALUES(email)",
 			in.Name, in.Phone, in.Email)
+	}
+	if !serverErr(w, err) {
+		respondOK(w)
+	}
+}
+
+// ---------- Общие материалы ----------
+
+// Material — общий материал; Date — его слот ДЗ (пара 0), где лежат описание, файлы и ссылки.
+type Material struct {
+	ID    int64  `db:"id" json:"id"`
+	Title string `db:"title" json:"title"`
+	Date  string `db:"date" json:"date"`
+}
+
+const materialCols = "id, title, DATE_FORMAT(DATE_ADD('" + generalDate + "', INTERVAL id DAY), '%Y-%m-%d') AS date"
+
+// listMaterials — все общие материалы, новые сверху.
+func listMaterials(w http.ResponseWriter, r *http.Request) {
+	list := []Material{}
+	if !serverErr(w, db.Select(&list, "SELECT "+materialCols+" FROM materials ORDER BY id DESC")) {
+		writeJSON(w, 200, list)
+	}
+}
+
+// createMaterial добавляет общий материал с названием (до 200 символов).
+func createMaterial(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Title string `json:"title"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	title := clip(in.Title, 200)
+	if title == "" {
+		fail(w, 400, "Нужно название")
+		return
+	}
+	res, err := db.Exec("INSERT INTO materials (title, created_by) VALUES (?, ?)", title, userOf(r).ID)
+	if serverErr(w, err) {
+		return
+	}
+	id, _ := res.LastInsertId()
+	var m Material
+	if !serverErr(w, db.Get(&m, "SELECT "+materialCols+" FROM materials WHERE id = ?", id)) {
+		writeJSON(w, 200, m)
+	}
+}
+
+// deleteMaterial удаляет материал вместе с его описанием, файлами (и с диска) и ссылками.
+func deleteMaterial(w http.ResponseWriter, r *http.Request) {
+	var m Material
+	err := db.Get(&m, "SELECT "+materialCols+" FROM materials WHERE id = ?", r.PathValue("id"))
+	if errors.Is(err, sql.ErrNoRows) {
+		respondOK(w)
+		return
+	}
+	if serverErr(w, err) {
+		return
+	}
+	var stored []string
+	err = db.Select(&stored, "SELECT stored_name FROM homework_files WHERE date = ?", m.Date)
+	for _, q := range []string{"homework_files", "homework_links", "homework"} {
+		if err != nil {
+			break
+		}
+		_, err = db.Exec("DELETE FROM "+q+" WHERE date = ?", m.Date)
+	}
+	if err == nil {
+		_, err = db.Exec("DELETE FROM materials WHERE id = ?", m.ID)
+	}
+	for _, name := range stored {
+		if err != nil {
+			break
+		}
+		err = removeUnused(name)
 	}
 	if !serverErr(w, err) {
 		respondOK(w)
