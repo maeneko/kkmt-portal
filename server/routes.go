@@ -113,14 +113,6 @@ func homeworkRoutes(m *http.ServeMux) {
 		moderator(attachFile),
 	)
 	m.HandleFunc(
-		"POST /api/homework/links",
-		moderator(addLink),
-	)
-	m.HandleFunc(
-		"DELETE /api/homework/links/{id}",
-		moderator(deleteLink),
-	)
-	m.HandleFunc(
 		"PUT /api/teachers",
 		moderator(saveTeacher),
 	)

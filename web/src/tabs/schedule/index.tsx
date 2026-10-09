@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, errText, isModerator, type PageProps } from '../../lib/api';
-import { IcoCalendar, IcoClip, IcoEdit, IcoLink, IcoNote, IcoPlus } from '../../components/icons';
+import { IcoCalendar, IcoClip, IcoEdit, IcoNote, IcoPlus } from '../../components/icons';
 import HomeworkBlock, { SOLUTION, hasContent, type HwItem } from './HomeworkBlock';
 import TeacherInfo from './TeacherInfo';
 import ScheduleEditor from './ScheduleEditor';
@@ -38,6 +38,8 @@ const shortName = (full: string) => {
     const [surname, ...rest] = full.trim().split(/\s+/);
     return rest.length ? `${surname} ${rest.map(p => `${p[0].toUpperCase()}.`).join(' ')}` : surname ?? '';
 };
+// «20 сентября» по дате ГГГГ-ММ-ДД
+const dayMonth = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 
@@ -140,13 +142,12 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
     // Метки в ячейке: «добавлено дз», «добавлено файлов: N» и «добавлено ссылок: N»
     const hwBadge = (date: string, pair: number) => {
         const h = hw[`${date}|${pair}`];
-        const n = h?.files.length ?? 0, nl = h?.links.length ?? 0;
-        if (!h || (!h.body && n === 0 && nl === 0)) return null;
+        const n = h?.files.length ?? 0;
+        if (!h || (!h.body && n === 0)) return null;
         return (
             <span className="hw-badges">
                 {h.body && <span className="hw-badge" title="Добавлено домашнее задание"><IcoNote /></span>}
                 {n > 0 && <span className="hw-badge" title={`Добавлено файлов: ${n}`}><IcoClip />{n}</span>}
-                {nl > 0 && <span className="hw-badge" title={`Добавлено ссылок: ${nl}`}><IcoLink />{nl}</span>}
             </span>
         );
     };
@@ -208,7 +209,7 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
             </div>
 
             {editing && (
-                <ScheduleEditor mode={editing} day={day} dayName={DAYS[day]} timeOf={n => timeOf(day, n)} lessons={data.lessons} changes={changes} weekDates={weekDates} parity={parity} pairs={maxPair}
+                <ScheduleEditor mode={editing} day={day} dayName={editing === 'week' ? `${DAYS[day]} (${dayMonth(weekDates[day])})` : DAYS[day]} timeOf={n => timeOf(day, n)} lessons={data.lessons} changes={changes} weekDates={weekDates} parity={parity} pairs={maxPair}
                                 onClose={() => setEditing(null)} onSaved={load} showMsg={showMsg} />
             )}
 
@@ -216,7 +217,7 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
                 <div className="sg-corner" role="columnheader" />
                 {DAYS.map((name, i) => (
                     <div key={name} role="columnheader" className={`sg-head${i === cur ? ' sg-head--today' : ''}`}>
-                        <span className="sg-day-full">{name}</span><span className="sg-day-short">{SHORT[i]}</span>
+                        <span className="sg-day-full">{name}<small className="sg-date">({dayMonth(weekDates[i])})</small></span><span className="sg-day-short">{SHORT[i]}</span>
                     </div>
                 ))}
                 {rows.map(n => {
@@ -268,7 +269,7 @@ export default function Schedule({ me, showMsg, focus, goTo }: PageProps) {
                 return (
                     <section key={name} className={`card${isToday ? ' day-card--today' : ''}${day === i ? '' : ' day-card--hidden'}`}>
                         <div className="day-head">
-                            <span className="card-title grow">{name}</span>
+                            <span className="card-title grow">{name} ({dayMonth(weekDates[i])})</span>
                             {isToday && <span className="chip chip--primary">Сегодня</span>}
                         </div>
                         <div className="day-rows" style={{ '--rows': rows.length } as React.CSSProperties}>

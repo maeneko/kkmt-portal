@@ -1,19 +1,18 @@
 import { useRef, useState } from 'react';
 import { api, errText } from '../../lib/api';
-import { IcoClip, IcoDownload, IcoLink, IcoPlus, IcoTrash } from '../../components/icons';
+import { IcoClip, IcoDownload, IcoPlus, IcoTrash } from '../../components/icons';
 import Linkify from '../../components/Linkify';
 import { subjectAt, type Lesson } from '.';
 
 export interface HwFile { id: number; name: string; size: number; note: string; author: string }
-export interface HwLink { id: number; url: string; title: string }
 // solution — эталонное решение этой пары (подставляется в «Материалах»)
-export interface HwItem { date: string; pair_no: number; body: string; files: HwFile[]; links: HwLink[]; solution?: HwItem }
+export interface HwItem { date: string; pair_no: number; body: string; files: HwFile[]; solution?: HwItem }
 
 // Общие материалы — слот ДЗ с этой датой и парой 0 (так же на сервере)
 export const GENERAL = '1000-01-01';
 // Эталонное решение пары N — слот с номером пары N + SOLUTION (так же на сервере)
 export const SOLUTION = 100;
-export const hasContent = (i?: HwItem) => !!i && (!!i.body || i.files.length > 0 || i.links.length > 0);
+export const hasContent = (i?: HwItem) => !!i && (!!i.body || i.files.length > 0);
 const MAX_MB = 50;
 const ddmm = (d: string) => `${d.slice(8)}.${d.slice(5, 7)}`;
 
@@ -32,32 +31,13 @@ export function FileList({ files, onRemove, onNote }: { files: HwFile[]; onRemov
                         </a>
                         {onRemove && <button className="hw-pill-x" aria-label={`Удалить ${f.name}`} title="Удалить" onClick={() => onRemove(f)}><IcoTrash /></button>}
                     </div>
-                    {f.author && <span className="hw-author">Добавлено: {f.author}</span>}
                     {onNote ? (
                         <textarea key={f.note} className="hw-note-in" rows={1} maxLength={500} placeholder="Что сделать в этом файле" defaultValue={f.note}
                                   ref={el => { if (el) { el.style.height = '0'; el.style.height = `${el.scrollHeight + 2}px`; } }}
                                   onInput={e => { const el = e.currentTarget; el.style.height = '0'; el.style.height = `${el.scrollHeight + 2}px`; }}
                                   onBlur={e => { if (e.target.value.trim() !== f.note) onNote(f, e.target.value.trim()); }} />
                     ) : f.note && <p className="hw-note"><Linkify text={f.note} /></p>}
-                </li>
-            ))}
-        </ul>
-    );
-}
-
-// Ссылки к паре: капсулы как у файлов; с onRemove — с кнопкой удаления.
-export function LinkList({ links, onRemove }: { links: HwLink[]; onRemove?: (l: HwLink) => void }) {
-    return (
-        <ul className="hw-files">
-            {links.map(l => (
-                <li key={l.id} className="hw-file-item">
-                    <div className="hw-pill">
-                        <a className="hw-pill-link" href={l.url} target="_blank" rel="noopener noreferrer" title={l.url}>
-                            <IcoLink />
-                            <span className="hw-pill-name">{l.title || l.url}</span>
-                        </a>
-                        {onRemove && <button className="hw-pill-x" aria-label={`Удалить ${l.title || l.url}`} title="Удалить" onClick={() => onRemove(l)}><IcoTrash /></button>}
-                    </div>
+                    {f.author && <span className="hw-author">Добавлено: {f.author}</span>}
                 </li>
             ))}
         </ul>
@@ -69,17 +49,16 @@ export const fmtSize = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1
 
 // Домашнее задание и файлы к паре: читают все, добавляют и меняют админы/староста.
 // Файлы прошлых занятий по этому же предмету можно прикрепить повторно, без новой загрузки.
-export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, showMsg, subject, lessons, semesterStart }: {
+// part — показать только текст (body) или только файлы (files), без рамки: для зон в «Материалах».
+export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, showMsg, subject, lessons, semesterStart, part }: {
     date: string; pair: number; item?: HwItem; canEdit: boolean; onChanged: () => void; showMsg: (t: string) => void;
-    subject: string; lessons: Lesson[]; semesterStart: string | null;
+    subject: string; lessons: Lesson[]; semesterStart: string | null; part?: 'body' | 'files';
 }) {
     const body = item?.body ?? '';
     const files = item?.files ?? [];
-    const links = item?.links ?? [];
     const general = pair === 0;
     const solution = pair > SOLUTION;
     const [editing, setEditing] = useState(false);
-    const [linking, setLinking] = useState<{ url: string; title: string } | null>(null);
     const [draft, setDraft] = useState('');
     const [busy, setBusy] = useState(false);
     const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
@@ -127,15 +106,6 @@ export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, sh
     const saveNote = async (f: HwFile, note: string) => {
         try { await api('PATCH', `/homework/files/${f.id}`, { note }); onChanged(); } catch (e) { showMsg(errText(e)); }
     };
-    const addLink = async () => {
-        if (!linking) return;
-        setBusy(true);
-        try { await api('POST', '/homework/links', { date, pair_no: pair, ...linking }); setLinking(null); onChanged(); }
-        catch (e) { showMsg(errText(e)); } finally { setBusy(false); }
-    };
-    const removeLink = async (l: HwLink) => {
-        try { await api('DELETE', `/homework/links/${l.id}`); onChanged(); } catch (e) { showMsg(errText(e)); }
-    };
 
     // Старые файлы этого предмета (новые сверху, без повторов и без уже прикреплённых)
     const toggleOld = async () => {
@@ -158,7 +128,8 @@ export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, sh
     };
 
     return (
-        <div className={`hw${solution ? ' hw--solution' : ''}`}>
+        <div className={`hw${solution ? ' hw--solution' : ''}${part ? ' hw--bare' : ''}`}>
+            {part !== 'files' && <>
             <div className="hw-head">
                 <span className="hw-title">{general ? 'Описание' : solution ? 'Эталонное решение' : 'Домашнее задание'}</span>
                 {canEdit && !editing && <button className="btn btn--tonal btn--sm" onClick={() => { setDraft(body); setEditing(true); }}>{body ? 'Изменить' : 'Добавить'}</button>}
@@ -173,7 +144,9 @@ export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, sh
                     </div>
                 </div>
             ) : body ? <p className="hw-body"><Linkify text={body} /></p> : <p className="hw-empty">{general ? 'Ничего нет' : solution ? 'Не добавлено' : 'Не задано'}</p>}
+            </>}
 
+            {part !== 'body' && <>
             <div className="hw-head">
                 <span className="hw-title">Файлы</span>
                 {canEdit && (
@@ -205,22 +178,7 @@ export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, sh
             {files.length === 0 ? <p className="hw-empty">Файлов нет</p>
                 : <FileList files={files} onRemove={canEdit ? removeFile : undefined} onNote={canEdit ? saveNote : undefined} />}
             {canEdit && <p className="hint">Документы и картинки до {MAX_MB} МБ{!general && ', не больше 5 файлов на пару'}</p>}
-
-            <div className="hw-head">
-                <span className="hw-title">Ссылки</span>
-                {canEdit && !linking && <button className="btn btn--tonal btn--sm" onClick={() => setLinking({ url: '', title: '' })}><IcoPlus /> Ссылка</button>}
-            </div>
-            {linking && (
-                <form className="hw-form" onSubmit={e => { e.preventDefault(); addLink(); }}>
-                    <input className="field" type="url" autoFocus required maxLength={1000} placeholder="https://…" value={linking.url} onChange={e => setLinking({ ...linking, url: e.target.value })} />
-                    <input className="field" maxLength={200} placeholder="Подпись (необязательно)" value={linking.title} onChange={e => setLinking({ ...linking, title: e.target.value })} />
-                    <div className="row" style={{ justifyContent: 'flex-end' }}>
-                        <button type="button" className="btn btn--tonal btn--sm" disabled={busy} onClick={() => setLinking(null)}>Отмена</button>
-                        <button className="btn btn--primary btn--sm" disabled={busy}>Добавить</button>
-                    </div>
-                </form>
-            )}
-            {links.length === 0 ? <p className="hw-empty">Ссылок нет</p> : <LinkList links={links} onRemove={canEdit ? removeLink : undefined} />}
+            </>}
         </div>
     );
 }

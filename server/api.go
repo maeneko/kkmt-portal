@@ -30,10 +30,10 @@ const (
 	filesGeneral = 50 // и к общим материалам
 
 	// Общий материал №N — слот ДЗ с парой 0 и датой generalDate + N дней (но не позже generalEnd):
-	// так текст, файлы и ссылки материала используют те же таблицы и API, что и ДЗ.
+	// так текст и файлы материала используют те же таблицы и API, что и ДЗ.
 	generalDate = "1000-01-01"
 	generalEnd  = "1099-12-31"
-	// Эталонное решение пары N — слот ДЗ с номером пары N+100: текст, файлы и ссылки работают теми же запросами.
+	// Эталонное решение пары N — слот ДЗ с номером пары N+100: текст и файлы работают теми же запросами.
 	solutionShift = 100
 )
 
@@ -276,23 +276,15 @@ type HomeworkFile struct {
 	Author string `db:"author" json:"author"`
 }
 
-// HomeworkLink — ссылка, прикреплённая к паре.
-type HomeworkLink struct {
-	ID    int64  `db:"id" json:"id"`
-	URL   string `db:"url" json:"url"`
-	Title string `db:"title" json:"title"`
-}
-
-// homeworkItem — домашнее задание, файлы и ссылки одной пары на одну дату.
+// homeworkItem — домашнее задание и файлы одной пары на одну дату.
 type homeworkItem struct {
 	Date   string         `json:"date"`
 	PairNo int            `json:"pair_no"`
 	Body   string         `json:"body"`
 	Files  []HomeworkFile `json:"files"`
-	Links  []HomeworkLink `json:"links"`
 }
 
-// Дз, файлы и ссылки за период (для значков в расписании).
+// Дз и файлы за период (для значков в расписании).
 func listHomework(w http.ResponseWriter, r *http.Request) {
 	from, to := r.URL.Query().Get("from"), r.URL.Query().Get("to")
 	if !validDate(from) || !validDate(to) {
@@ -309,17 +301,11 @@ func listHomework(w http.ResponseWriter, r *http.Request) {
 		Date   string `db:"date"`
 		PairNo int    `db:"pair_no"`
 	}
-	var links []struct {
-		HomeworkLink
-		Date   string `db:"date"`
-		PairNo int    `db:"pair_no"`
-	}
 	err := errors.Join(
 		db.Select(&hw, "SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, body FROM homework WHERE date BETWEEN ? AND ?", from, to),
 		db.Select(&files, `SELECT f.id, DATE_FORMAT(f.date, '%Y-%m-%d') AS date, f.pair_no, f.original_name AS name, f.size, f.note,
 				COALESCE(`+displayNameSQL("u.")+`, '') AS author
 			FROM homework_files f LEFT JOIN users u ON u.id = f.uploaded_by WHERE f.date BETWEEN ? AND ? ORDER BY f.id`, from, to),
-		db.Select(&links, "SELECT id, DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no, url, title FROM homework_links WHERE date BETWEEN ? AND ? ORDER BY id", from, to),
 	)
 	if serverErr(w, err) {
 		return
@@ -328,7 +314,7 @@ func listHomework(w http.ResponseWriter, r *http.Request) {
 	get := func(date string, pair int) *homeworkItem {
 		key := fmt.Sprint(date, "|", pair)
 		if index[key] == nil {
-			index[key] = &homeworkItem{Date: date, PairNo: pair, Files: []HomeworkFile{}, Links: []HomeworkLink{}}
+			index[key] = &homeworkItem{Date: date, PairNo: pair, Files: []HomeworkFile{}}
 			items = append(items, index[key])
 		}
 		return index[key]
@@ -339,10 +325,6 @@ func listHomework(w http.ResponseWriter, r *http.Request) {
 	for _, f := range files {
 		g := get(f.Date, f.PairNo)
 		g.Files = append(g.Files, f.HomeworkFile)
-	}
-	for _, l := range links {
-		g := get(l.Date, l.PairNo)
-		g.Links = append(g.Links, l.HomeworkLink)
 	}
 	writeJSON(w, 200, map[string]any{"items": items})
 }
@@ -547,39 +529,6 @@ func attachFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, f)
 }
 
-// addLink прикрепляет ссылку к паре; только http(s), чтобы в href не попал javascript:.
-func addLink(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Date   string `json:"date"`
-		PairNo int    `json:"pair_no"`
-		URL    string `json:"url"`
-		Title  string `json:"title"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	l := HomeworkLink{URL: clip(in.URL, 1000), Title: clip(in.Title, 200)}
-	if !validSlot(in.Date, in.PairNo) || !strings.HasPrefix(l.URL, "http://") && !strings.HasPrefix(l.URL, "https://") {
-		fail(w, 400, "Нужна ссылка, начинающаяся с http:// или https://")
-		return
-	}
-	res, err := db.Exec("INSERT INTO homework_links (date, pair_no, url, title, created_by) VALUES (?, ?, ?, ?, ?)",
-		in.Date, in.PairNo, l.URL, l.Title, userOf(r).ID)
-	if serverErr(w, err) {
-		return
-	}
-	l.ID, _ = res.LastInsertId()
-	writeJSON(w, 200, l)
-}
-
-// deleteLink удаляет ссылку.
-func deleteLink(w http.ResponseWriter, r *http.Request) {
-	_, err := db.Exec("DELETE FROM homework_links WHERE id = ?", r.PathValue("id"))
-	if !serverErr(w, err) {
-		respondOK(w)
-	}
-}
-
 // saveTeacher сохраняет телефон и почту преподавателя; если оба пустые — запись удаляется.
 func saveTeacher(w http.ResponseWriter, r *http.Request) {
 	var in Teacher
@@ -605,7 +554,7 @@ func saveTeacher(w http.ResponseWriter, r *http.Request) {
 
 // ---------- Общие материалы ----------
 
-// Material — общий материал; Date — его слот ДЗ (пара 0), где лежат описание, файлы и ссылки.
+// Material — общий материал; Date — его слот ДЗ (пара 0), где лежат описание и файлы.
 type Material struct {
 	ID    int64  `db:"id" json:"id"`
 	Title string `db:"title" json:"title"`
@@ -646,7 +595,7 @@ func createMaterial(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// deleteMaterial удаляет материал вместе с его описанием, файлами (и с диска) и ссылками.
+// deleteMaterial удаляет материал вместе с его описанием и файлами (и с диска).
 func deleteMaterial(w http.ResponseWriter, r *http.Request) {
 	var m Material
 	err := db.Get(&m, "SELECT "+materialCols+" FROM materials WHERE id = ?", r.PathValue("id"))
@@ -659,7 +608,7 @@ func deleteMaterial(w http.ResponseWriter, r *http.Request) {
 	}
 	var stored []string
 	err = db.Select(&stored, "SELECT stored_name FROM homework_files WHERE date = ?", m.Date)
-	for _, q := range []string{"homework_files", "homework_links", "homework"} {
+	for _, q := range []string{"homework_files", "homework"} {
 		if err != nil {
 			break
 		}

@@ -7,6 +7,14 @@
     border: none; border-radius: var(--r-inner); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
     -webkit-tap-highlight-color: transparent; transition: background 0.15s;
 }
+.tree-line { display: flex; align-items: center; gap: 4px; padding-right: 8px; border-radius: var(--r-inner); transition: background 0.15s; }
+.tree-line:hover { background: var(--state-neutral); }
+.tree-line:has(.tree-row[aria-expanded='true']) { background: color-mix(in srgb, var(--primary) 6%, transparent); }
+.tree-line .tree-row, .tree-line .tree-row:hover { flex: 1; width: auto; min-width: 0; background: transparent; }
+/* квадратная кнопка «в расписание» справа в заголовке дня */
+.mat-go-sq { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 40px; height: 40px; border: none; border-radius: 10px; background: var(--primary-container); color: var(--on-primary-container); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mat-go-sq:hover { background: color-mix(in srgb, var(--on-primary-container) 12%, var(--primary-container)); }
+.mat-go-sq svg { width: 18px; height: 18px; }
 .tree-row:hover { background: var(--state-neutral); }
 .tree-row[aria-expanded='true'] { background: color-mix(in srgb, var(--primary) 6%, transparent); }
 .tree-row--subj { min-height: 64px; }
@@ -33,9 +41,6 @@
 .mat-zone-title { font-size: 12px; font-weight: 500; letter-spacing: .02em; color: var(--label); }
 .mat-zone .hw-note { background: var(--surface-bright); }
 .mat-zone .hw-body { font-size: 14px; }
-.mat-zone .hw-file-item { align-items: stretch; }
-.mat-zone .hw-pill { max-width: 100%; }
-.mat-zone .hw-pill-link { flex: 1; min-height: 36px; }
 /* кнопка «В расписании» внизу во всю ширину: прямоугольный MD3 tonal button */
 .mat-date { align-self: stretch; justify-content: center; height: 40px; padding: 0 12px; border: none; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
 .mat-date svg { width: 14px; height: 14px; }
@@ -47,14 +52,11 @@
 }
 /* Десктоп: день в две колонки — слева файлы, справа задание и кнопка; таблетки по ширине имени */
 @media (min-width: 641px) {
-    .tree-leaf { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; gap: 12px; }
-    .tree-leaf .mat-zone--files { grid-column: 1; grid-row: 1 / span 2; }
-    .tree-leaf .mat-zone:not(.mat-zone--files), .tree-leaf .mat-date { grid-column: 2; }
-    .tree-leaf .mat-date { align-self: end; }
-    .tree-leaf .mat-zone:only-of-type { grid-column: 1 / -1; grid-row: auto; }
-    .tree-leaf .mat-zone:only-of-type ~ .mat-date { grid-column: 1 / -1; justify-self: end; width: 280px; }
-    .mat-zone .hw-file-item { align-items: flex-start; }
-    .mat-zone .hw-pill-link { flex: initial; }
+    /* слева задание на всю высоту, справа вкладки «Файлы» / «Решение» */
+    .tree-leaf { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: stretch; gap: 12px; }
+    .tree-leaf > .mat-zone { grid-column: 1; }
+    .tree-leaf > .mat-side { grid-column: 2; }
+    .tree-leaf > .mat-side:first-child { grid-column: 1 / -1; }
 }
 
 /* ---------- Вид «Карточки» ---------- */
@@ -82,9 +84,18 @@
 .mat-item { min-height: 300px; min-width: 0; align-items: flex-start; gap: 10px; padding: 16px; }
 /* зоны не растягиваются, когда соседняя карточка в ряду выше: свободное место уходит перед кнопкой даты (у неё margin-top: auto) */
 .mat-item .mat-zone { align-self: stretch; flex: 0 0 auto; }
-.mat-item .hw--solution, .mat-item .hw-add-sol { align-self: stretch; }
-.tree-leaf .mat-zone--solution, .tree-leaf .hw--solution, .tree-leaf .hw-add-sol { grid-column: 1 / -1; grid-row: auto; }
-.mat-item .mat-date { align-self: flex-end; margin-top: auto; flex-shrink: 0; height: 32px; padding: 0 12px 0 10px; }
+/* задание не растягивается: иначе при смене вкладки карточка в ряду меняет высоту и вкладки соседних карточек «ездят» */
+.mat-item .mat-side { align-self: stretch; }
+/* правая часть дня в списке: вкладки и содержимое выбранной */
+/* вкладка «Решение» зелёная, как и сама зона решения */
+.seg .seg-sol { color: var(--success-dot); font-weight: 500; }
+.seg .seg-sol[aria-selected='true'] { background: var(--success-bg); color: var(--success-text); }
+.mat-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mat-head { align-self: stretch; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mat-head-text { display: flex; flex-direction: column; min-width: 0; }
+.mat-head-text b { font-size: 15px; font-weight: 500; line-height: 1.3; }
+.mat-head-text span { font-size: 12px; color: var(--neutral-text); }
+.mat-head .mat-date { align-self: center; flex-shrink: 0; height: 32px; padding: 0 12px 0 10px; }
 @media (max-width: 640px) {
     .mat-top { flex-direction: column; align-items: stretch; gap: 8px; }
     .mat-top .mat-search { flex: none; }
@@ -99,8 +110,6 @@
     .mat-item { padding: 14px; }
 }
 
-/* Общие материалы в списке: один блок на всю ширину */
-.tree-leaf > .hw { grid-column: 1 / -1; }
 
 /* форма добавления общего материала */
 .mat-new { display: flex; gap: 8px; align-items: center; }

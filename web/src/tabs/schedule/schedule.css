@@ -28,6 +28,9 @@
 .sg-cell--now .sg-meta { color: inherit; opacity: .8; }
 .sg-corner { }
 .sg-day-short { display: none; }
+/* дата под названием дня в шапке сетки */
+.sg-date { display: block; font-size: 11px; font-weight: 400; color: var(--neutral-text); }
+.sg-head--today .sg-date { color: inherit; opacity: .8; }
 @media (max-width: 640px) { .sg-day-full { display: none; } .sg-day-short { display: inline; } }
 /* Два вида: сетка (sched--grid) и карточки (sched--cards) */
 .sched { display: flex; flex-direction: column; gap: 12px; }
@@ -183,12 +186,13 @@
 /* эталонное решение — зелёная зона */
 .hw--solution { padding: 8px 12px 12px; border: 1px solid color-mix(in srgb, var(--success-dot) 45%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); }
 /* пустое место под эталонное решение: зелёная пунктирная зона во всю ширину */
+.hw--bare { padding: 0; margin-top: 0; border-top: none; }
 .hw-add-sol { align-self: stretch; justify-content: center; height: 44px; margin-top: 4px; border: 1px dashed color-mix(in srgb, var(--success-dot) 60%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); color: var(--success-dot); font-weight: 600; }
 .hw-add-sol:hover { background: color-mix(in srgb, var(--success-dot) 18%, var(--surface-bright)); }
 .hw--solution .hw-title { color: var(--success-dot); font-weight: 600; }
 
 .text-link { color: var(--primary); text-decoration: underline; word-break: break-all; }
-.hw-author { font-size: 11px; color: var(--neutral-text); padding-left: 14px; }
+.hw-author { font-size: 11px; color: var(--neutral-text); padding: 0 12px; }
 .hw-progress { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 16px; background: var(--surface-container); font-size: 12px; }
 .hw-progress-name { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
 .hw-progress-bar { height: 6px; border-radius: 3px; background: var(--outline-variant); overflow: hidden; }
@@ -198,9 +202,10 @@
 .hw-contact a { color: var(--primary); text-decoration: none; }
 .hw-contact a:hover { text-decoration: underline; }
 /* Файлы и ссылки — капсулами */
-.hw-files { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.hw-files { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 /* файл: таблетка-ссылка, под ней — что в нём сделать */
-.hw-file-item { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+/* файл — карточка: капсула на всю ширину, под ней кто добавил и что сделать */
+.hw-file-item { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; padding: 6px; border-radius: 20px; background: color-mix(in srgb, var(--on-surface) 5%, transparent); }
 .hw-note { align-self: stretch; padding: 8px 12px; border-radius: 12px; background: var(--surface-container); font-size: 13px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 .hw-note-in {
     align-self: stretch; padding: 8px 12px; border: 1px solid var(--outline-variant); border-radius: 12px; background: var(--surface-container);
@@ -214,11 +219,11 @@
 }
 .hw-old-item:hover:not(:disabled) { background: var(--state-primary); }
 .hw-old-item svg { flex-shrink: 0; color: var(--primary); }
-.hw-files .hw-pill { display: inline-flex; align-items: stretch; min-height: 0; max-width: 100%; border-radius: var(--r-pill); background: var(--primary-container); color: var(--on-primary-container); overflow: hidden; }
-.hw-pill-link { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; color: inherit; text-decoration: none; min-width: 0; font-size: 13px; position: relative; }
+.hw-files .hw-pill { display: flex; align-items: stretch; min-height: 0; max-width: 100%; border-radius: var(--r-pill); background: var(--primary-container); color: var(--on-primary-container); overflow: hidden; }
+.hw-pill-link { display: flex; flex: 1; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; color: inherit; text-decoration: none; min-width: 0; font-size: 13px; position: relative; }
 .hw-pill-link:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
 .hw-pill-link svg { flex-shrink: 0; }
-.hw-pill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.hw-pill-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .hw-pill-size { font-size: 11px; opacity: .75; white-space: nowrap; flex-shrink: 0; }
 .hw-pill-x { display: inline-flex; align-items: center; justify-content: center; width: 40px; border: none; background: transparent; color: var(--danger-text); cursor: pointer; border-left: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
 .hw-pill-x:hover { background: rgba(186, 26, 26, .12); }

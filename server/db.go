@@ -122,17 +122,7 @@ var schema = []string{
         INDEX idx_slot (date, pair_no),
         FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
     ) CHARACTER SET utf8mb4`,
-	`CREATE TABLE IF NOT EXISTS homework_links (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        date DATE NOT NULL,
-        pair_no TINYINT NOT NULL,
-        url VARCHAR(1000) NOT NULL,
-        title VARCHAR(200) NOT NULL DEFAULT '',
-        created_by INT NULL,
-        INDEX idx_slot (date, pair_no),
-        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-    ) CHARACTER SET utf8mb4`,
-	// Общие материалы; описание, файлы и ссылки лежат в слоте ДЗ с датой 1000-01-01 + id дней (см. generalDate)
+	// Общие материалы; описание и файлы лежат в слоте ДЗ с датой 1000-01-01 + id дней (см. generalDate)
 	`CREATE TABLE IF NOT EXISTS materials (
         id INT AUTO_INCREMENT PRIMARY KEY,
         title VARCHAR(200) NOT NULL,

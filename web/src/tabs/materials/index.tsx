@@ -4,10 +4,10 @@ import { useConfirm } from '../../components/Dialog';
 import { IcoCalendar, IcoChevron, IcoFolder, IcoPlus, IcoTrash } from '../../components/icons';
 import { subjectAt, type Lesson } from '../schedule';
 import Linkify from '../../components/Linkify';
-import HomeworkBlock, { FileList, GENERAL, LinkList, SOLUTION, hasContent, type HwItem } from '../schedule/HomeworkBlock';
+import HomeworkBlock, { FileList, GENERAL, SOLUTION, hasContent, type HwItem } from '../schedule/HomeworkBlock';
 import './materials.css';
 
-interface Subject { name: string; items: HwItem[]; files: number; links: number }
+interface Subject { name: string; items: HwItem[]; files: number }
 type Sort = 'name' | 'date';
 
 const GENERAL_NAME = 'Общие материалы';
@@ -25,6 +25,8 @@ const fmtDate = (s: string) => new Date(`${s}T00:00:00`).toLocaleDateString('ru-
 // Дз хранится по дате и номеру пары, поэтому предмет находим по расписанию: день недели + чётность недели.
 export default function Materials({ me, showMsg, goTo }: PageProps) {
     const [subjects, setSubjects] = useState<Subject[] | null>(null);
+    // расписание нужно HomeworkBlock («Из прошлых» ищет файлы того же предмета)
+    const [schedule, setSchedule] = useState<{ lessons: Lesson[]; semesterStart: string | null }>({ lessons: [], semesterStart: null });
     // общие материалы — не привязаны ни к предмету, ни к дате; описание, файлы и ссылки каждого лежат в его слоте (по date)
     const [ask, dialog] = useConfirm();
     const [materials, setMaterials] = useState<Material[]>([]);
@@ -64,11 +66,12 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
     // открытый предмет в виде карточек
     const [cur, setCur] = useState<string | null>(null);
 
-    // пара («дата|номер»), у которой модератор открыл пустую зону «Эталонное решение»
-    const [solOpen, setSolOpen] = useState('');
+    // выбранная вкладка дня («дата|пара» → файлы или решение)
+    const [sideTab, setSideTab] = useState<Record<string, 'files' | 'solution'>>({});
     const load = useCallback(() => {
         (async () => {
             const sched = await api<{ lessons: Lesson[]; semesterStart: string | null }>('GET', '/schedule');
+            setSchedule(sched);
             const now = new Date();
             const from = sched.semesterStart ?? iso(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
             const to = iso(new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()));
@@ -78,16 +81,15 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
             for (const sol of items.filter(i => i.pair_no > SOLUTION && hasContent(i))) {
                 const pair = sol.pair_no - SOLUTION;
                 let it = base.find(i => i.date === sol.date && i.pair_no === pair);
-                if (!it) base.push(it = { date: sol.date, pair_no: pair, body: '', files: [], links: [] });
+                if (!it) base.push(it = { date: sol.date, pair_no: pair, body: '', files: [] });
                 it.solution = sol;
             }
             const map = new Map<string, Subject>();
             for (const it of base) {
                 const name = subjectAt(sched.lessons, sched.semesterStart, it.date, it.pair_no) ?? 'Без предмета';
-                const s = map.get(name) ?? { name, items: [], files: 0, links: 0 };
+                const s = map.get(name) ?? { name, items: [], files: 0 };
                 s.items.push(it);
                 s.files += it.files.length;
-                s.links += it.links.length;
                 map.set(name, s);
             }
             for (const s of map.values()) s.items.sort((a, b) => b.date.localeCompare(a.date) || a.pair_no - b.pair_no);
@@ -102,7 +104,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
         .sort((a, b) => (sort === 'date' ? b.items[0].date.localeCompare(a.items[0].date) : 0) || a.name.localeCompare(b.name, 'ru'));
     const summary = (s: Subject) => {
         const hw = s.items.filter(i => i.body).length;
-        return [hw > 0 && `Заданий: ${hw}`, s.files > 0 && `Файлов: ${s.files}`, s.links > 0 && `Ссылок: ${s.links}`].filter(Boolean).join(' · ');
+        return [hw > 0 && `Заданий: ${hw}`, s.files > 0 && `Файлов: ${s.files}`].filter(Boolean).join(' · ');
     };
     const showGeneral = GENERAL_NAME.toLowerCase().includes(query.trim().toLowerCase());
     const generalSummary = materials.length ? `Материалов: ${materials.length}` : '';
@@ -127,40 +129,67 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
             ))}
         </div>
     );
-    // содержимое дня — общее для обоих видов: сверху файлы, снизу задание, кнопка перехода в расписание
-    const dayBody = (i: HwItem, label: string) => (
-        <>
-            {(i.files.length > 0 || i.links.length > 0) && (
-                <div className="mat-zone mat-zone--files">
-                    <span className="mat-zone-title">{[i.files.length > 0 && `Файлы · ${i.files.length}`, i.links.length > 0 && `Ссылки · ${i.links.length}`].filter(Boolean).join(' · ')}</span>
-                    {i.files.length > 0 && <FileList files={i.files} />}
-                    {i.links.length > 0 && <LinkList links={i.links} />}
-                </div>
-            )}
-            {i.body && (
-                <div className="mat-zone">
-                    <span className="mat-zone-title">Задание</span>
-                    <p className="hw-body"><Linkify text={i.body} /></p>
-                </div>
-            )}
-            {isModerator(me) ? (
-                // модератор правит решение на месте; пустое — кнопка-зона для добавления
-                hasContent(i.solution) || solOpen === `${i.date}|${i.pair_no}`
-                    ? <HomeworkBlock date={i.date} pair={i.pair_no + SOLUTION} item={i.solution} canEdit onChanged={load} showMsg={showMsg} subject="" lessons={[]} semesterStart={null} />
-                    : <button className="btn btn--tonal btn--sm hw-add-sol" onClick={() => setSolOpen(`${i.date}|${i.pair_no}`)}><IcoPlus /> Добавить эталонное решение</button>
-            ) : hasContent(i.solution) && i.solution && (
-                <div className="mat-zone mat-zone--solution">
-                    <span className="mat-zone-title">Эталонное решение</span>
-                    {i.solution.body && <p className="hw-body"><Linkify text={i.solution.body} /></p>}
-                    {i.solution.files.length > 0 && <FileList files={i.solution.files} />}
-                    {i.solution.links.length > 0 && <LinkList links={i.solution.links} />}
-                </div>
-            )}
-            <button className="chip chip--primary mat-date" title="Открыть в расписании" onClick={() => goTo('schedule', { date: i.date, pair: i.pair_no })}>
-                <IcoCalendar />{label}
-            </button>
-        </>
-    );
+    const toLesson = (i: HwItem) => goTo('schedule', { date: i.date, pair: i.pair_no });
+    // содержимое дня: задание и вкладки «Файлы» / «Решение». В списке задание слева, вкладки справа (дата и кнопка перехода — в строке дня),
+    // в карточке (card) сверху ещё шапка с датой, парой и кнопкой перехода
+    const dayBody = (i: HwItem, subject: string, card = false) => {
+        const key = `${i.date}|${i.pair_no}`, mod = isModerator(me);
+        // модератор правит задание, файлы и ссылки на месте (тот же блок, что в карточке пары в расписании)
+        const edit = { date: i.date, pair: i.pair_no, item: i, canEdit: true, onChanged: load, showMsg, subject, lessons: schedule.lessons, semesterStart: schedule.semesterStart };
+        const hasFiles = mod || i.files.length > 0, hasSol = hasContent(i.solution);
+        const files = hasFiles && (mod ? (
+            <div className="mat-zone mat-zone--files"><HomeworkBlock {...edit} part="files" /></div>
+        ) : (
+            <div className="mat-zone mat-zone--files">
+                <span className="mat-zone-title">Файлы · {i.files.length}</span>
+                {i.files.length > 0 && <FileList files={i.files} />}
+            </div>
+        ));
+        const task = mod ? (
+            <div className="mat-zone mat-zone--task"><HomeworkBlock {...edit} part="body" /></div>
+        ) : i.body && (
+            <div className="mat-zone mat-zone--task">
+                <span className="mat-zone-title">Задание</span>
+                <p className="hw-body"><Linkify text={i.body} /></p>
+            </div>
+        );
+        // модератор правит решение на месте
+        const solution = mod ? (
+            <HomeworkBlock date={i.date} pair={i.pair_no + SOLUTION} item={i.solution} canEdit onChanged={load} showMsg={showMsg} subject="" lessons={[]} semesterStart={null} />
+        ) : hasSol && i.solution && (
+            <div className="mat-zone mat-zone--solution">
+                <span className="mat-zone-title">Эталонное решение</span>
+                {i.solution.body && <p className="hw-body"><Linkify text={i.solution.body} /></p>}
+                {i.solution.files.length > 0 && <FileList files={i.solution.files} />}
+            </div>
+        );
+        // вкладки нужны, когда есть что переключать: и файлы, и решение (модератору решение доступно всегда)
+        const both = hasFiles && (mod || hasSol);
+        const tab = both ? sideTab[key] ?? 'files' : hasFiles ? 'files' : 'solution';
+        const pick = (t: 'files' | 'solution') => setSideTab(o => ({ ...o, [key]: t }));
+        return (
+            <>
+                {card && (
+                    <div className="mat-head">
+                        <div className="mat-head-text"><b>{fmtDate(i.date)}</b><span>{i.pair_no} пара</span></div>
+                        <button className="chip chip--primary mat-date" title="Открыть в расписании" onClick={() => toLesson(i)}><IcoCalendar />В расписании</button>
+                    </div>
+                )}
+                {task}
+                {(hasFiles || mod || hasSol) && (
+                    <div className="mat-side">
+                        {both && (
+                            <div className="seg seg--full" role="tablist" aria-label="Файлы и решение">
+                                <button role="tab" aria-selected={tab === 'files'} onClick={() => pick('files')}>Файлы</button>
+                                <button role="tab" className="seg-sol" aria-selected={tab === 'solution'} onClick={() => pick('solution')}>Решение</button>
+                            </div>
+                        )}
+                        {tab === 'files' ? files : solution}
+                    </div>
+                )}
+            </>
+        );
+    };
     const page = subjects.find(s => s.name === cur);
 
     // Карточки: страница общих материалов
@@ -188,7 +217,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
             <div className="mat-days">
                 {page.items.map(i => (
                     <section key={`${i.date}|${i.pair_no}`} className="card mat-item">
-                        {dayBody(i, `${fmtDate(i.date)} · ${i.pair_no} пара`)}
+                        {dayBody(i, page.name, true)}
                     </section>
                 ))}
             </div>
@@ -263,14 +292,17 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                                             const k = `${s.name}|${i.date}|${i.pair_no}`, d = open.has(k);
                                             return (
                                                 <li key={k}>
-                                                    <button className="tree-row" aria-expanded={d} onClick={() => flip(k)}>
-                                                        <span className="tree-chev"><IcoChevron /></span>
-                                                        <span className="grow">
-                                                            <span className="tree-title">{fmtDate(i.date)} · {i.pair_no} пара</span>
-                                                            <span className="tree-sub">{[i.files.length > 0 && `Файлов: ${i.files.length}`, i.links.length > 0 && `Ссылок: ${i.links.length}`, i.body && 'есть задание'].filter(Boolean).join(' · ')}</span>
-                                                        </span>
-                                                    </button>
-                                                    {d && <div className="tree-leaf">{dayBody(i, 'В расписании')}</div>}
+                                                    <div className="tree-line">
+                                                        <button className="tree-row" aria-expanded={d} onClick={() => flip(k)}>
+                                                            <span className="tree-chev"><IcoChevron /></span>
+                                                            <span className="grow">
+                                                                <span className="tree-title">{fmtDate(i.date)} · {i.pair_no} пара</span>
+                                                                <span className="tree-sub">{[i.files.length > 0 && `Файлов: ${i.files.length}`, i.body && 'есть задание'].filter(Boolean).join(' · ')}</span>
+                                                            </span>
+                                                        </button>
+                                                        <button className="mat-go-sq" title="Открыть в расписании" aria-label="Открыть в расписании" onClick={() => toLesson(i)}><IcoCalendar /></button>
+                                                    </div>
+                                                    {d && <div className="tree-leaf">{dayBody(i, s.name)}</div>}
                                                 </li>
                                             );
                                         })}
