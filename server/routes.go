@@ -10,6 +10,7 @@ func routes() *http.ServeMux {
 	authRoutes(m)
 	userRoutes(m)
 	postRoutes(m)
+	chatRoutes(m)
 	homeworkRoutes(m)
 	adminRoutes(m)
 
@@ -71,15 +72,15 @@ func postRoutes(m *http.ServeMux) {
 	)
 	m.HandleFunc(
 		"POST /api/posts",
-		admin(createPost),
+		authed(createPost),
 	)
 	m.HandleFunc(
 		"PATCH /api/posts/{id}",
-		admin(pinPost),
+		authed(pinPost),
 	)
 	m.HandleFunc(
 		"DELETE /api/posts/{id}",
-		admin(deletePost),
+		authed(deletePost),
 	)
 }
 
@@ -184,5 +185,32 @@ func adminRoutes(m *http.ServeMux) {
 	m.HandleFunc(
 		"PUT /api/admin/settings",
 		admin(saveSettings),
+	)
+}
+
+func chatRoutes(m *http.ServeMux) {
+	m.HandleFunc(
+		"GET /api/chat",
+		authed(chatChannels),
+	)
+	m.HandleFunc(
+		"GET /api/chat/messages",
+		authed(chatMessages),
+	)
+	m.HandleFunc(
+		"POST /api/chat/messages",
+		authed(chatSend),
+	)
+	m.HandleFunc(
+		"DELETE /api/chat/messages/{id}",
+		authed(chatDelete),
+	)
+	m.HandleFunc(
+		"PUT /api/chat/read",
+		authed(chatRead),
+	)
+	m.HandleFunc(
+		"GET /api/chat/stream",
+		authed(chatStream),
 	)
 }

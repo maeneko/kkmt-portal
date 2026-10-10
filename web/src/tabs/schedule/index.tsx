@@ -147,14 +147,12 @@ export default function Schedule({ me, showMsg, focus, goTo, openLesson: open, c
                     <button role="tab" aria-selected={view === 'grid'} onClick={() => setView('grid')}>Сетка</button>
                     <button role="tab" aria-selected={view === 'cards'} onClick={() => setView('cards')}>Карточки</button>
                 </div>
-                {/* десктоп — кнопка с меню, телефон — FAB с двумя кнопками над ним */}
-                {isModerator(me) && !editing && (
-                    <button className="theme-toggle theme-toggle--inline" title="Скан" aria-label="Скан — распознать фото листа замен" onClick={() => setImporting(true)}><IcoScan /></button>
-                )}
+                {/* FAB «Редактировать»: над ним раскрываются «Скан» (фото листа замен), «Эта неделя» и «Всё расписание» */}
                 {isModerator(me) && !editing && (
                     <div className="edit-dial">
                         {dial && (
                             <div className="edit-dial-menu">
+                                <button className="btn btn--tonal" onClick={() => { setImporting(true); setDial(false); }}><IcoScan /> Скан</button>
                                 <button className="btn btn--tonal" onClick={() => { setEditing('week'); setDial(false); }}>Эта неделя</button>
                                 <button className="btn btn--tonal" onClick={() => { setEditing('all'); setDial(false); }}>Всё расписание</button>
                             </div>

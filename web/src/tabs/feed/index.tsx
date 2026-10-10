@@ -1,43 +1,54 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, cached, clip, errText, isAdmin, type PageProps } from '../../lib/api';
+import { api, cached, clip, errText, isAdmin, isModerator, type Me, type PageProps } from '../../lib/api';
 import Avatar from '../../components/Avatar';
 import Linkify from '../../components/Linkify';
 import Switch from '../../components/Switch';
 import { useConfirm } from '../../components/Dialog';
 import { IcoPin, IcoPlus, IcoTrash } from '../../components/icons';
+import Chat from './Chat';
 import './feed.css';
 
 interface Post { id: number; body: string; pinned: boolean; created_at: string; author_id: number; author_name: string; author_photo: string | null }
 
 const fmt = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
 
-export default function Feed({ me, showMsg }: PageProps) {
+// Как в Discord: одна колонка каналов — глобальные новости и новости группы первыми, ниже чаты; посты показываются в той же панели
+export default function Feed({ me, showMsg, group }: PageProps) {
+    return <Chat me={me} group={group} showMsg={showMsg} news={scope => <News key={scope} me={me} showMsg={showMsg} scope={scope} />} />;
+}
+
+// Лента постов: глобальные новости пишут и ведут админы; новости группы пишут все, закрепляют и удаляют чужие — модераторы.
+// Свой пост автор может удалить всегда.
+function News({ me, showMsg, scope }: { me: Me; showMsg: (t: string) => void; scope: 'global' | 'group' }) {
     const [ask, dialog] = useConfirm();
+    const url = `/posts?scope=${scope}`;
+    const canPost = scope === 'group' || isAdmin(me);
+    const canManage = scope === 'group' ? isModerator(me) : isAdmin(me);
     // прошлая лента из кеша — сразу, свежая подставится после загрузки
-    const [posts, setPosts] = useState<Post[]>(() => cached<{ posts: Post[] }>('/posts')?.posts ?? []);
-    const [hasMore, setHasMore] = useState(() => cached<{ hasMore: boolean }>('/posts')?.hasMore ?? false);
-    const [loaded, setLoaded] = useState(() => !!cached('/posts'));
+    const [posts, setPosts] = useState<Post[]>(() => cached<{ posts: Post[] }>(url)?.posts ?? []);
+    const [hasMore, setHasMore] = useState(() => cached<{ hasMore: boolean }>(url)?.hasMore ?? false);
+    const [loaded, setLoaded] = useState(() => !!cached(url));
     const [draft, setDraft] = useState('');
     const [pinDraft, setPinDraft] = useState(false);
 
     const load = useCallback(async () => {
         try {
-            const d = await api<{ posts: Post[]; hasMore: boolean }>('GET', '/posts');
+            const d = await api<{ posts: Post[]; hasMore: boolean }>('GET', url);
             setPosts(d.posts); setHasMore(d.hasMore);
         } catch (e) { showMsg(errText(e)); } finally { setLoaded(true); }
-    }, [showMsg]);
+    }, [showMsg, url]);
     useEffect(() => { load(); }, [load]);
 
     const more = async () => {
         const last = posts[posts.length - 1];
         try {
-            const d = await api<{ posts: Post[]; hasMore: boolean }>('GET', `/posts?before=${last.id}`);
+            const d = await api<{ posts: Post[]; hasMore: boolean }>('GET', `${url}&before=${last.id}`);
             setPosts(p => [...p, ...d.posts.filter(n => !p.some(o => o.id === n.id))]); setHasMore(d.hasMore);
         } catch (e) { showMsg(errText(e)); }
     };
 
     const publish = async () => {
-        try { await api('POST', '/posts', { body: draft, pinned: pinDraft }); setDraft(''); setPinDraft(false); await load(); showMsg('Опубликовано'); }
+        try { await api('POST', '/posts', { body: draft, pinned: pinDraft, scope }); setDraft(''); setPinDraft(false); await load(); showMsg('Опубликовано'); }
         catch (e) { showMsg(errText(e)); }
     };
     const togglePin = async (p: Post) => {
@@ -50,12 +61,12 @@ export default function Feed({ me, showMsg }: PageProps) {
 
     return (
         <>
-            {isAdmin(me) && (
+            {canPost && (
                 <div className="card">
                     <span className="card-title">Новый пост</span>
-                    <textarea className="field" placeholder="Что нового для группы?" maxLength={5000} value={draft} onChange={e => setDraft(e.target.value)} />
+                    <textarea className="field" placeholder={scope === 'group' ? 'Чем поделиться с группой?' : 'Новость для всех'} maxLength={5000} value={draft} onChange={e => setDraft(e.target.value)} />
                     <div className="row row--wrap">
-                        <label className="choice grow"><span className="grow">Закрепить сверху</span><Switch checked={pinDraft} onChange={e => setPinDraft(e.target.checked)} /></label>
+                        {canManage ? <label className="choice grow"><span className="grow">Закрепить сверху</span><Switch checked={pinDraft} onChange={e => setPinDraft(e.target.checked)} /></label> : <span className="grow" />}
                         <button className="btn btn--primary" disabled={!draft.trim()} onClick={publish}><IcoPlus /> Опубликовать</button>
                     </div>
                 </div>
@@ -69,12 +80,8 @@ export default function Feed({ me, showMsg }: PageProps) {
                         <Avatar name={clip(p.author_name)} photo={p.author_photo} />
                         <div className="grow"><div className="nm" style={{ fontWeight: 500 }} title={p.author_name}>{clip(p.author_name)}</div><div className="hint">{fmt(p.created_at)}</div></div>
                         {p.pinned && <span className="chip chip--primary"><IcoPin /> Закреплено</span>}
-                        {isAdmin(me) && (
-                            <>
-                                <button className="btn-icon btn-icon--neutral" aria-label={p.pinned ? 'Открепить' : 'Закрепить'} onClick={() => togglePin(p)}><IcoPin /></button>
-                                <button className="btn-icon btn-icon--danger" aria-label="Удалить пост" onClick={() => remove(p)}><IcoTrash /></button>
-                            </>
-                        )}
+                        {canManage && <button className="btn-icon btn-icon--neutral" aria-label={p.pinned ? 'Открепить' : 'Закрепить'} onClick={() => togglePin(p)}><IcoPin /></button>}
+                        {(canManage || p.author_id === me.id) && <button className="btn-icon btn-icon--danger" aria-label="Удалить пост" onClick={() => remove(p)}><IcoTrash /></button>}
                     </div>
                     <div className="post-body"><Linkify text={p.body} /></div>
                 </article>

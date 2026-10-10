@@ -106,10 +106,11 @@ func app(next http.Handler) http.Handler {
 
 // gzipMiddleware сжимает JSON-ответы API (в 5–10 раз меньше — заметно на медленном интернете).
 // Файлы ДЗ отдаются как есть: документы и картинки уже сжаты, а ServeFile сам отвечает на Range.
+// Поток чата тоже: сжатие копит байты и не даёт отдать событие сразу.
 func gzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, "/api/") ||
-			strings.HasPrefix(r.URL.Path, "/api/homework/files/") ||
+			strings.HasPrefix(r.URL.Path, "/api/homework/files/") || r.URL.Path == "/api/chat/stream" ||
 			!strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			next.ServeHTTP(w, r)
 			return

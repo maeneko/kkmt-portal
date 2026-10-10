@@ -74,6 +74,7 @@ var schema = []string{
         author_id INT NOT NULL,
         body TEXT NOT NULL,
         pinned TINYINT(1) NOT NULL DEFAULT 0,
+        scope ENUM('global','group') NOT NULL DEFAULT 'global',
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
@@ -138,6 +139,24 @@ var schema = []string{
         vk VARCHAR(64) NOT NULL DEFAULT '',
         tg VARCHAR(64) NOT NULL DEFAULT ''
     ) CHARACTER SET utf8mb4`,
+	// Чат: channel '' — «Общий», иначе название предмета из расписания
+	`CREATE TABLE IF NOT EXISTS chat_messages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        channel VARCHAR(200) NOT NULL DEFAULT '',
+        author_id INT NOT NULL,
+        body TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_channel (channel, id),
+        FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
+    ) CHARACTER SET utf8mb4`,
+	// до какого сообщения пользователь дочитал канал — для счётчиков непрочитанных
+	`CREATE TABLE IF NOT EXISTS chat_reads (
+        user_id INT NOT NULL,
+        channel VARCHAR(200) NOT NULL,
+        last_id INT NOT NULL,
+        PRIMARY KEY (user_id, channel),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) CHARACTER SET utf8mb4`,
 	// Память исправлений распознавания листа замен: как прочитал OCR → что это на самом деле
 	`CREATE TABLE IF NOT EXISTS ocr_aliases (
         kind VARCHAR(10) NOT NULL,
@@ -195,6 +214,10 @@ func migrate(conn *sqlx.DB) error {
 		if _, err := conn.Exec("UPDATE invites SET used_count = 1 WHERE used_by IS NOT NULL"); err != nil {
 			return err
 		}
+	}
+	// новости: global — общие (публикуют админы), group — новости группы (публикуют все)
+	if _, err := addColumn("posts", "scope", "ENUM('global','group') NOT NULL DEFAULT 'global'"); err != nil {
+		return err
 	}
 	if _, err := addColumn("teachers", "vk", "VARCHAR(64) NOT NULL DEFAULT ''"); err != nil {
 		return err

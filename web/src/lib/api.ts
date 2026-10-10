@@ -16,6 +16,7 @@ export interface Me {
 
 export interface PageProps {
     me: Me;
+    group: string; // название группы (для капсулы в шторке каналов ленты)
     reloadMe: () => Promise<void>;
     showMsg: (text: string) => void;
     logout: () => void;
@@ -96,6 +97,7 @@ export function clearCache() {
     try { localStorage.removeItem(CACHE_KEY); } catch { /* не критично */ }
 }
 
+export const ROLE_LABEL: Record<Role, string> = { owner: 'Главный админ', admin: 'Админ', moderator: 'Модератор', student: 'Студент' };
 export const isAdmin = (m: Me) => m.role === 'admin' || m.role === 'owner';
 export const isModerator = (m: Me) => m.role !== 'student';
 // Ник/имя на экране не длиннее 32 символов: остальное заменяется на «...» (считаем символы Unicode, эмодзи не рвётся)

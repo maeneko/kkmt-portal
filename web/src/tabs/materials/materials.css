@@ -29,7 +29,7 @@
 .tree-leaf { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 8px 19px; padding-left: 12px; border-left: 1px solid var(--outline-variant); }
 
 /* зоны дня: сверху файлы (тон primary), снизу задание (нейтральный тон) */
-.mat-zone { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 16px; background: var(--surface-container); }
+.mat-zone { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--surface-container); }
 .mat-zone--files { background: color-mix(in srgb, var(--primary) 8%, var(--surface-bright)); }
 .mat-zone--solution { background: color-mix(in srgb, var(--success-dot) 12%, var(--surface-bright)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success-dot) 40%, transparent); }
 .mat-zone--solution .mat-zone-title { color: var(--success-dot); font-weight: 600; }

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import './App.css';
 import { api, ApiError, cached, clearCache, getNet, subscribeNet, isAdmin, isModerator, type Focus, type Me, type OpenLesson } from './lib/api';
-import { IcoMoon, IcoShield, IcoSun } from './components/icons';
+import { IcoMenu, IcoMoon, IcoSun } from './components/icons';
 import Logo from './components/Logo';
 import BottomNav from './components/BottomNav';
-import TabMenu from './components/TabMenu';
+import NavDrawer from './components/NavDrawer';
+import ProfileMenu from './components/ProfileMenu';
 import Login from './components/Login';
 import LessonDetails from './tabs/schedule/LessonDetails';
 import { TABS } from './tabs';
 
 const THEME_KEY = 'kkmt.theme';
 const ADMIN_KEY = 'kkmt.adminMode';
+const NAV_KEY = 'kkmt.navOpen';
 
 // Оболочка: сессия, тема, шапка (капсула + выпадающий список вкладок) и переключение вкладок из реестра TABS.
 export default function App() {
@@ -34,6 +36,24 @@ export default function App() {
         closeTimer.current = window.setTimeout(() => { setLesson(null); setLessonClosing(false); }, 260);
     }, []);
     const [scrolled, setScrolled] = useState(false);
+    // только панель справа на ПК: на телефоне подробности — шторка, а навигации там нет
+    const panelShown = !!lesson && !lessonClosing && lesson.pop;
+    useEffect(() => { setNavShrunk(panelShown); }, [panelShown]);
+    // Навигация на ПК: navOpen — выбор человека («три полоски», запоминается; пока не выбирали — развёрнута на широком окне).
+    // navShrunk — временное сворачивание, пока открыты подробности пары: освобождает место, а при закрытии всё возвращается как было.
+    const [navOpen, setNavOpen] = useState(() => {
+        try { const v = localStorage.getItem(NAV_KEY); if (v) return v === 'on'; } catch { /* нет хранилища */ }
+        return window.innerWidth >= 1200;
+    });
+    const [navShrunk, setNavShrunk] = useState(false);
+    const navExpanded = navOpen && !navShrunk;
+    const saveNav = (open: boolean) => { setNavOpen(open); try { localStorage.setItem(NAV_KEY, open ? 'on' : 'off'); } catch { /* не критично */ } };
+    // «Три полоски» сильнее автоматики: развернули при открытых подробностях — остаётся развёрнутой до закрытия и после
+    const toggleNav = () => {
+        if (navExpanded) return saveNav(false);
+        setNavShrunk(false);
+        saveNav(true);
+    };
     // связь плохая — в шапке метка «данные могут быть устаревшими»; без связи по нажатию страница загружается заново
     const net = useSyncExternalStore(subscribeNet, getNet);
     const [retry, setRetry] = useState(0);
@@ -94,6 +114,8 @@ export default function App() {
     const view = me && !adminMode ? { ...me, role: 'student' as const } : me;
     const tabs = TABS.filter(t => !t.adminOnly || (view && isAdmin(view)));
     const tab = tabs.find(t => t.id === activeTab) ?? tabs[0];
+    // профиль и админка — в шторке профиля, в навигации только разделы
+    const navTabs = tabs.filter(t => !t.account);
     // Заголовок «прокручивается» при смене вкладки: старый уезжает, новый въезжает;
     // вкладка правее — снизу вверх, левее — сверху вниз
     useEffect(() => { closeLesson(); }, [tab.id, closeLesson]);
@@ -106,7 +128,7 @@ export default function App() {
     }
 
     return (
-        <div className="app">
+        <div className={`app${navExpanded ? ' app--nav-open' : ''}`}>
             {!me && (
                 <button className="theme-toggle" aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
                         onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}>
@@ -118,14 +140,22 @@ export default function App() {
                 <Login onDone={reloadMe} onConfig={c => setGroup(c.groupName)} />
             ) : (
                 <>
+                    <NavDrawer tabs={navTabs} active={tab.id} onNavigate={goTo} />
                     <header className={`app-header${scrolled ? ' app-header--scrolled' : ''}`}>
-                        <button className="brand-capsule" title="В ленту" onClick={() => goTo('feed')}>
-                            <Logo size={28} />
-                            <span className="brand-text">
-                                <span className="brand-name">{group}</span>
-                                <span className="brand-sub">Портал группы</span>
-                            </span>
-                        </button>
+                        <div className="header-left">
+                            <button className="btn-icon btn-icon--neutral nav-toggle" aria-expanded={navExpanded} aria-label={navExpanded ? 'Свернуть навигацию' : 'Развернуть навигацию'} title={navExpanded ? 'Свернуть' : 'Развернуть'} onClick={toggleNav}>
+                                <IcoMenu />
+                            </button>
+                            <button className="brand-capsule" title="В ленту" onClick={() => goTo('feed')}>
+                                <Logo size={28} />
+                                <span className="brand-text">
+                                    <span className="brand-name">{group}</span>
+                                    <span className="brand-sub">Портал группы</span>
+                                </span>
+                            </button>
+                            {/* сюда страница ставит свою кнопку на месте капсулы (на телефоне — «три полоски» каналов ленты); капсула плавно сжимается */}
+                            <span className="title-slot" id="title-slot" />
+                        </div>
                         <div className="header-right">
                             {net !== 'ok' && (
                                 <button className={`net-chip${net === 'offline' ? ' net-chip--off' : ''}`} aria-live="polite"
@@ -134,17 +164,10 @@ export default function App() {
                                     <i className="net-dot" />{net === 'offline' ? 'Нет связи' : 'Обновление…'}
                                 </button>
                             )}
-                            {isModerator(me) && (
-                                <button className="theme-toggle theme-toggle--inline" aria-pressed={adminMode} title="Режим админа" aria-label={adminMode ? 'Выключить режим админа' : 'Включить режим админа'}
-                                        onClick={toggleAdminMode}>
-                                    <IcoShield />
-                                </button>
-                            )}
-                            <button className="theme-toggle theme-toggle--inline" aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-                                    onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}>
-                                {theme === 'dark' ? <IcoSun /> : <IcoMoon />}
-                            </button>
-                            <TabMenu tabs={tabs} active={tab} onNavigate={goTo} onLogout={logout} onOpen={closeLesson} />
+                            <ProfileMenu me={me} tabs={tabs.filter(t => t.account)} active={tab.id} onNavigate={goTo}
+                                         dark={theme === 'dark'} onDark={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+                                         adminMode={adminMode} onAdminMode={isModerator(me) ? toggleAdminMode : undefined} onLogout={logout} onOpen={closeLesson}
+                                         reloadMe={reloadMe} showMsg={showMsg} />
                         </div>
                     </header>
 
@@ -153,11 +176,11 @@ export default function App() {
                             {titleFrom.current && <span className="pt-out" aria-hidden>{titleFrom.current.label}</span>}
                             <span className="pt-in">{tab.label}</span>
                         </h2>
-                        <tab.Page key={`page-${tab.id}-${retry}`} me={view ?? me} reloadMe={reloadMe} showMsg={showMsg} logout={logout} goTo={goTo} focus={focus}
+                        <tab.Page key={`page-${tab.id}-${retry}`} group={group} me={view ?? me} reloadMe={reloadMe} showMsg={showMsg} logout={logout} goTo={goTo} focus={focus}
                                   openLesson={openLesson} closeLesson={closeLesson} lessonOpen={lessonClosing ? null : lesson} lessonRev={lessonRev} />
                     </main>
 
-                    <BottomNav tabs={tabs} active={tab.id} onNavigate={goTo} />
+                    <BottomNav tabs={navTabs} active={tab.id} onNavigate={goTo} />
                     {lesson && <LessonDetails sel={lesson} closing={lessonClosing} me={view ?? me} showMsg={showMsg} onClose={closeLesson} onChanged={() => setLessonRev(r => r + 1)} />}
                 </>
             )}

@@ -1,4 +1,13 @@
 .profile-head { display: flex; align-items: center; gap: 16px; }
+.profile-edit { align-self: flex-start; }
+/* плавное раскрытие: высота идёт от 0fr к 1fr (без измерения содержимого в JS); закрытое содержимое не фокусируется (visibility) */
+.fold { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 320ms var(--ease-std), opacity 200ms linear, margin-top 320ms var(--ease-std); }
+.fold--open { grid-template-rows: 1fr; opacity: 1; }
+.fold-in { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s 320ms; padding: 3px; margin: -3px; }
+.fold--open > .fold-in { visibility: visible; transition-delay: 0s; }
+.fold-in > .profile-form { margin-top: 12px; animation: none !important; }
+/* кнопка «Редактировать» в карточке с gap 12: когда свёрнута, гасим и этот зазор */
+.profile-edit-fold:not(.fold--open) { margin-top: -12px; }
 .profile-name { font-size: 20px; font-weight: 500; }
 .member { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .member + .member { border-top: 1px solid var(--outline-variant); }

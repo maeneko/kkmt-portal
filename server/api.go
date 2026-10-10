@@ -133,16 +133,20 @@ type Post struct {
 func listPosts(w http.ResponseWriter, r *http.Request) {
 	const pageSize = 10
 
+	scope := r.URL.Query().Get("scope")
+	if scope != "group" {
+		scope = "global"
+	}
 	query := `SELECT p.id, p.body, p.pinned, p.created_at, u.id AS author_id,
 			` + displayNameSQL("u.") + ` AS author_name, u.photo_url AS author_photo
-		FROM posts p JOIN users u ON u.id = p.author_id `
+		FROM posts p JOIN users u ON u.id = p.author_id WHERE p.scope = ? `
 	var args []any
 	if before := r.URL.Query().Get("before"); before != "" && before != "0" {
-		query += "WHERE p.id < ? ORDER BY p.id DESC LIMIT ?"
-		args = []any{before, pageSize + 1}
+		query += "AND p.id < ? ORDER BY p.id DESC LIMIT ?"
+		args = []any{scope, before, pageSize + 1}
 	} else {
 		query += "ORDER BY p.pinned DESC, p.id DESC LIMIT ?"
-		args = []any{pageSize + 1}
+		args = []any{scope, pageSize + 1}
 	}
 
 	// просим на один пост больше: если он пришёл — есть следующая страница
@@ -157,11 +161,12 @@ func listPosts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"posts": posts, "hasMore": hasMore})
 }
 
-// createPost публикует пост (до 5000 символов); только админы.
+// createPost публикует пост (до 5000 символов): в глобальные новости — админы, в новости группы — все.
 func createPost(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Body   string `json:"body"`
 		Pinned bool   `json:"pinned"`
+		Scope  string `json:"scope"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -171,12 +176,46 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Пустой пост")
 		return
 	}
-	res, err := db.Exec("INSERT INTO posts (author_id, body, pinned) VALUES (?, ?, ?)", userOf(r).ID, body, in.Pinned)
+	if in.Scope != "group" {
+		in.Scope = "global"
+	}
+	if in.Scope == "global" && !canManagePosts(userOf(r), "global") {
+		fail(w, 403, "Глобальные новости публикуют только админы")
+		return
+	}
+	// закрепить при публикации может только тот, кто вообще закрепляет в этих новостях
+	pinned := in.Pinned && canManagePosts(userOf(r), in.Scope)
+	res, err := db.Exec("INSERT INTO posts (author_id, body, pinned, scope) VALUES (?, ?, ?, ?)", userOf(r).ID, body, pinned, in.Scope)
 	if serverErr(w, err) {
 		return
 	}
 	id, _ := res.LastInsertId()
 	writeJSON(w, 200, map[string]int64{"id": id})
+}
+
+// canManagePosts: глобальные новости ведут админы, новости группы — модераторы и выше (закреп, удаление чужих).
+func canManagePosts(u *User, scope string) bool {
+	if scope == "group" {
+		return u.Role != "student"
+	}
+	return u.Role == "admin" || u.Role == "owner"
+}
+
+// postOf — новости, к которым относится пост, и его автор; нет поста — 404.
+func postOf(w http.ResponseWriter, r *http.Request) (scope string, author int64, ok bool) {
+	var p struct {
+		Scope    string `db:"scope"`
+		AuthorID int64  `db:"author_id"`
+	}
+	err := db.Get(&p, "SELECT scope, author_id FROM posts WHERE id = ?", r.PathValue("id"))
+	if errors.Is(err, sql.ErrNoRows) {
+		fail(w, 404, "Пост не найден")
+		return "", 0, false
+	}
+	if serverErr(w, err) {
+		return "", 0, false
+	}
+	return p.Scope, p.AuthorID, true
 }
 
 // pinPost закрепляет или открепляет пост.
@@ -187,6 +226,14 @@ func pinPost(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
+	scope, _, ok := postOf(w, r)
+	if !ok {
+		return
+	}
+	if !canManagePosts(userOf(r), scope) {
+		fail(w, 403, "Нет прав закреплять")
+		return
+	}
 	if in.Pinned != nil {
 		if _, err := db.Exec("UPDATE posts SET pinned = ? WHERE id = ?", *in.Pinned, r.PathValue("id")); serverErr(w, err) {
 			return
@@ -195,8 +242,16 @@ func pinPost(w http.ResponseWriter, r *http.Request) {
 	respondOK(w)
 }
 
-// deletePost удаляет пост.
+// deletePost удаляет пост: свой — автор, чужой — тот, кто ведёт эти новости.
 func deletePost(w http.ResponseWriter, r *http.Request) {
+	scope, author, ok := postOf(w, r)
+	if !ok {
+		return
+	}
+	if author != userOf(r).ID && !canManagePosts(userOf(r), scope) {
+		fail(w, 403, "Можно удалить только свой пост")
+		return
+	}
 	_, err := db.Exec("DELETE FROM posts WHERE id = ?", r.PathValue("id"))
 	if !serverErr(w, err) {
 		respondOK(w)

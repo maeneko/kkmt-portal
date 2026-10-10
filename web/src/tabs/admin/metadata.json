@@ -1,1 +1,1 @@
-{ "id": "admin", "label": "Админка", "icon": "shield", "order": 3, "adminOnly": true }
+{ "id": "admin", "label": "Админка", "icon": "settings", "order": 3, "adminOnly": true, "account": true }

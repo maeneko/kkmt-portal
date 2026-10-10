@@ -39,7 +39,7 @@
 .sched--cards .sched-grid { display: none; }
 .day-pills { display: none; }
 .sched-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
-.sched-cards .card { padding: 12px; gap: 8px; border-radius: 20px; }
+.sched-cards .card { padding: 12px; gap: 8px; }
 .sched-cards .card-title { font-size: 14px; }
 .sched-cards .lesson { gap: 10px; padding: 8px 10px; }
 .sched-cards .lesson-time { width: 40px; font-size: 11px; }
@@ -57,11 +57,11 @@
     .sched-cards[data-dir='next'] .card { animation: day-next 260ms var(--ease-in) both; }
     .sched-cards[data-dir='prev'] .card { animation: day-prev 260ms var(--ease-in) both; }
     /* компактная сетка во всю ширину: короткие дни, только номер пары и название предмета (подробности — по нажатию) */
-    .sched-grid { grid-template-columns: 22px repeat(6, minmax(0, 1fr)); gap: 3px; padding: 6px; border-radius: 20px; }
+    .sched-grid { grid-template-columns: 22px repeat(6, minmax(0, 1fr)); gap: 3px; padding: 6px; border-radius: var(--r-card); }
     .sg-head { padding: 6px 0; font-size: 12px; }
     .sg-time span, .sg-sat-time, .sg-meta, .sg-lesson .chip { display: none; }
     .sg-time b { font-size: 13px; }
-    .sg-cell { min-height: 64px; padding: 4px; gap: 2px; border-radius: 10px; }
+    .sg-cell { min-height: 64px; padding: 4px; gap: 2px; border-radius: var(--r-s); }
     .sg-lesson .lesson-subj {
         font-size: 10.5px; line-height: 1.2; hyphens: auto; overflow-wrap: anywhere;
         display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
@@ -72,8 +72,9 @@
 
 /* Десктоп: расписание целиком в высоту окна, без прокрутки страницы */
 @media (min-width: 641px) {
-    .main:has(.sched) { flex: none; height: calc(100dvh - 68px); padding: 8px 24px 16px; gap: 0; }
-    .main:has(.sched) > .page-title { display: none; }
+    .main:has(.sched) { flex: none; height: calc(100dvh - 68px); padding-bottom: 16px; } /* отступы сверху и между заголовком и страницей — общие, как у остальных вкладок */
+    .main:has(.edit-dial) { padding-bottom: 88px; } /* место под кнопку «Редактировать», чтобы она не закрывала последние пары */
+    .main:has(.sched) > .page-title { flex-shrink: 0; } /* сетка забирает оставшуюся высоту */
     .sched { flex: 1; min-height: 0; }
 
     .sched--cards .sched-cards { flex: 1; min-height: 0; grid-template-rows: repeat(2, minmax(0, 1fr)); }
@@ -158,7 +159,7 @@
 .sg-cell--full:hover:not(.sg-cell--now) { background: color-mix(in srgb, var(--primary) 12%, var(--surface-container)); }
 /* день, пара, аудитория, преподаватель — карточками-плитками: подпись сверху, значение под ней */
 .lesson-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.lesson-info > div { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; min-height: 56px; padding: 8px 16px; border-radius: 16px; background: var(--surface-container); }
+.lesson-info > div { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; min-height: 56px; padding: 8px 16px; border-radius: 12px; background: var(--surface-container); }
 .lesson-info > .li-wide { grid-column: 1 / -1; }
 .sheet .lesson-info > div { background: var(--surface-bright); }
 /* «Преподаватель» — MD3 split-контейнер: сегмент с текстом и сегмент-кнопка контактов через зазор 2dp;
@@ -166,12 +167,12 @@
 .lesson-info > .li-teacher { padding: 0; gap: 2px; background: none; border-radius: 0; }
 .sheet .lesson-info > .li-teacher { background: none; }
 .ti-head { display: flex; align-items: stretch; gap: 2px; min-height: 56px; }
-.ti-text { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 16px; background: var(--surface-container); border-radius: 16px 4px 4px 16px; }
+.ti-text { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 16px; background: var(--surface-container); border-radius: 12px 4px 4px 12px; }
 .ti-label { color: var(--neutral-text); font-size: 12px; line-height: 16px; }
 .ti-name { font-size: 14px; font-weight: 500; line-height: 20px; overflow-wrap: anywhere; }
 .ti-btn {
     position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 56px; min-height: 48px;
-    border: none; border-radius: 4px 16px 16px 4px; background: var(--primary-container); color: var(--on-primary-container);
+    border: none; border-radius: 4px 12px 12px 4px; background: var(--primary-container); color: var(--on-primary-container);
     cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.2s var(--ease-std), color 0.2s var(--ease-std);
 }
 .ti-btn svg { width: 24px; height: 24px; }
@@ -182,9 +183,9 @@
 .ti-btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
 .ti-btn[aria-expanded='true'] { background: var(--primary); color: var(--on-primary); }
 /* раскрыто: нижние внешние углы сегментов становятся внутренними (4dp) */
-.ti-head:has(.ti-btn[aria-expanded='true']) .ti-text { border-radius: 16px 4px 4px 4px; }
-.ti-head:has(.ti-btn[aria-expanded='true']) .ti-btn { border-radius: 4px 16px 4px 4px; }
-.ti-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 16px; background: var(--surface-container); border-radius: 4px 4px 16px 16px; }
+.ti-head:has(.ti-btn[aria-expanded='true']) .ti-text { border-radius: 12px 4px 4px 4px; }
+.ti-head:has(.ti-btn[aria-expanded='true']) .ti-btn { border-radius: 4px 12px 4px 4px; }
+.ti-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 16px; background: var(--surface-container); border-radius: 4px 4px 12px 12px; }
 .sheet .ti-text, .sheet .ti-body { background: var(--surface-bright); }
 .lesson-info dt { color: var(--neutral-text); font-size: 12px; line-height: 16px; }
 .lesson-info dd { font-size: 14px; line-height: 20px; font-weight: 500; overflow-wrap: anywhere; }
@@ -196,8 +197,8 @@
 /* z-index ниже шапки (100): иначе панель перекрывает выпадающее меню вкладок. Десктоп: панель пары закреплена справа (её рисует App), страница сдвигается влево; на узком окне панель поверх */
 .lesson-side {
     position: fixed; z-index: 90; top: 76px; right: 16px; bottom: 16px; width: 364px; overflow-y: auto; padding: 16px 20px 16px;
-    background: var(--surface-bright); border: 1px solid var(--outline-variant); border-radius: var(--r-card);
-    box-shadow: 0 8px 28px var(--shadow); animation: side-in 220ms var(--ease-in);
+    background: var(--surface-bright); border: 1px solid var(--outline-variant); border-radius: var(--r-l);
+    box-shadow: var(--elev-1); animation: side-in 220ms var(--ease-in);
 }
 @keyframes side-in { from { opacity: 0; transform: translateX(24px); } }
 /* закрытие: панель уезжает вправо и гаснет, пока страница возвращается на место */
@@ -207,7 +208,7 @@
    который CSS не умеет анимировать (из-за этого страница прыгала). Центрирование считается руками, как auto. */
 @property --side { syntax: '<length>'; inherits: true; initial-value: 0px; }
 @media (min-width: 1100px) {
-    .app { --side: 0px; transition: --side 0.28s var(--ease-std); }
+    .app { --side: 0px; } /* transition для --side задан вместе с padding-left в App.css */
     .app:has(.lesson-side:not(.lesson-side--out)) { --side: 396px; }
     .main {
         --gutter: max(0px, calc((100% - var(--side) - 1200px) / 2));
@@ -234,10 +235,10 @@
 .lesson-side .hw-badge, .sg-lesson .hw-badge { margin-top: 1px; }
 .dialog .hw { margin-top: 0; }
 /* эталонное решение — зелёная зона */
-.hw--solution { padding: 8px 12px 12px; border: 1px solid color-mix(in srgb, var(--success-dot) 45%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); }
+.hw--solution { padding: 8px 12px 12px; border: 1px solid color-mix(in srgb, var(--success-dot) 45%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); }
 /* пустое место под эталонное решение: зелёная пунктирная зона во всю ширину */
 .hw--bare { padding: 0; margin-top: 0; border-top: none; }
-.hw-add-sol { align-self: stretch; justify-content: center; height: 44px; margin-top: 4px; border: 1px dashed color-mix(in srgb, var(--success-dot) 60%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); color: var(--success-dot); font-weight: 600; }
+.hw-add-sol { align-self: stretch; justify-content: center; height: 44px; margin-top: 4px; border: 1px dashed color-mix(in srgb, var(--success-dot) 60%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--success-dot) 10%, var(--surface-bright)); color: var(--success-dot); font-weight: 600; }
 .hw-add-sol:hover { background: color-mix(in srgb, var(--success-dot) 18%, var(--surface-bright)); }
 .hw--solution .hw-title { color: var(--success-dot); font-weight: 600; }
 /* подробности пары (панель справа и шторка): сетка 4/8dp, заголовки секций title-small 14/20, текст body-medium 14/20 */
@@ -252,7 +253,7 @@
 .text-link { color: var(--primary); text-decoration: underline; word-break: break-all; }
 .hw-file-entry { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .hw-author { font-size: 11px; color: var(--neutral-text); padding: 0 12px; }
-.hw-progress { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 16px; background: var(--surface-container); font-size: 12px; }
+.hw-progress { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 12px; background: var(--surface-container); font-size: 12px; }
 .hw-progress-name { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
 .hw-progress-bar { height: 6px; border-radius: 3px; background: var(--outline-variant); overflow: hidden; }
 .hw-progress-bar i { display: block; height: 100%; background: var(--primary); transition: width .15s linear; }
@@ -268,14 +269,14 @@
 .hw-files { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 /* файл: таблетка-ссылка, под ней — что в нём сделать */
 /* файл — карточка: капсула на всю ширину, под ней кто добавил и что сделать */
-.hw-file-item { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; padding: 6px; border-radius: 20px; background: color-mix(in srgb, var(--on-surface) 5%, transparent); }
+.hw-file-item { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; padding: 6px; border-radius: 12px; background: color-mix(in srgb, var(--on-surface) 5%, transparent); }
 .hw-note { align-self: stretch; padding: 8px 12px; border-radius: 12px; background: var(--surface-container); font-size: 13px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
 .hw-note-in {
     align-self: stretch; padding: 8px 12px; border: 1px solid var(--outline-variant); border-radius: 12px; background: var(--surface-container);
     color: var(--on-surface); font: inherit; font-size: 13px; line-height: 1.45; resize: none; overflow: hidden; outline: none;
 }
 .hw-note-in:focus { border-color: var(--primary); }
-.hw-old { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px dashed var(--outline); border-radius: 16px; }
+.hw-old { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px dashed var(--outline); border-radius: 12px; }
 .hw-old-item {
     display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border: none; border-radius: var(--r-pill);
     background: transparent; color: var(--on-surface); font: inherit; font-size: 13px; text-align: left; cursor: pointer; min-width: 0;
@@ -302,22 +303,24 @@
 @keyframes day-prev { from { opacity: 0; transform: translateX(-40px); } }
 
 /* Редактирование расписания: кнопка с меню в панели (десктоп), FAB с двумя кнопками над ним (телефон) */
-.edit-dial { position: relative; }
+/* «Редактировать» — extended FAB (MD3): справа внизу, меню «Эта неделя / Всё расписание» раскрывается над ним.
+   При открытой панели пары (--side) отъезжает левее вместе со страницей; где панель перекрывает страницу — уходит под неё. */
+.edit-dial { position: fixed; z-index: 80; right: calc(24px + var(--side, 0px)); bottom: 24px; }
 .edit-dial-btn {
-    display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px;
-    border: none; border-radius: var(--r-pill); background: var(--primary-container); color: var(--on-primary-container);
-    font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    display: inline-flex; align-items: center; gap: 12px; height: 56px; padding: 0 20px 0 16px;
+    border: none; border-radius: var(--r-l); background: var(--primary-container); color: var(--on-primary-container);
+    font-family: var(--font); font-size: 14px; font-weight: 500; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    box-shadow: var(--elev-3); transition: box-shadow 0.15s, background 0.15s;
 }
+.edit-dial-btn:hover { background: color-mix(in srgb, var(--on-primary-container) 8%, var(--primary-container)); box-shadow: var(--elev-4); }
+.edit-dial-btn svg { width: 24px; height: 24px; }
 .edit-dial-menu {
-    position: absolute; right: 0; top: calc(100% + 8px); z-index: 300; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+    position: absolute; right: 0; bottom: calc(100% + 12px); display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
     animation: dialog-in 200ms var(--ease-in);
 }
-.edit-dial-menu .btn { box-shadow: 0 3px 10px var(--shadow); }
+.edit-dial-menu .btn { box-shadow: var(--elev-2); }
 @media (max-width: 640px) {
-    .edit-dial { position: fixed; z-index: 150; right: 16px; bottom: calc(96px + env(safe-area-inset-bottom)); }
-    .edit-dial-btn { width: 56px; height: 56px; padding: 0; justify-content: center; border-radius: 16px; font-size: 18px; box-shadow: 0 3px 10px var(--shadow); }
-    .edit-dial-btn span { display: none; }
-    .edit-dial-menu { top: auto; bottom: calc(100% + 12px); }
+    .edit-dial { z-index: 150; right: 16px; bottom: calc(96px + env(safe-area-inset-bottom)); }
     .main:has(.edit-dial) { padding-bottom: 176px; }
 }
 
@@ -383,7 +386,7 @@ select.tf-in, .tf-btn { appearance: none; cursor: pointer; padding-right: 32px;
 .sheet {
     transition: transform 350ms var(--ease-in);
     width: min(560px, 100%); max-height: 85dvh; display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 16px;
-    background: var(--surface-container); border-radius: 28px; box-shadow: 0 4px 24px var(--shadow); animation: sheet-in 450ms var(--ease-in);
+    background: var(--surface-container); border-radius: var(--r-xl); box-shadow: var(--elev-3); animation: sheet-in 450ms var(--ease-in);
 }
 @keyframes sheet-in { from { transform: translateY(calc(100% + 24px)); } }
 .sheet--out { transform: translateY(calc(100% + 24px)); transition: transform 260ms var(--ease-out); }
@@ -406,11 +409,11 @@ select.tf-in, .tf-btn { appearance: none; cursor: pointer; padding-right: 32px;
 .sheet-new { display: flex; align-items: center; gap: 8px; }
 .sheet-group {
     overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px;
-    border: 1px solid var(--outline-variant); border-radius: 24px; scrollbar-width: thin; overscroll-behavior: contain;
+    border: 1px solid var(--outline-variant); border-radius: var(--r-m); scrollbar-width: thin; overscroll-behavior: contain;
 }
 .sheet-item {
     display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 16px; flex-shrink: 0;
-    border: none; border-radius: 20px; background: transparent; color: var(--on-surface); font: inherit; text-align: left; cursor: pointer;
+    border: none; border-radius: var(--r-m); background: transparent; color: var(--on-surface); font: inherit; text-align: left; cursor: pointer;
 }
 .sheet-item:hover { background: var(--state-neutral); }
 .sheet-item--sel, .sheet-item--sel:hover { background: var(--primary-container); color: var(--on-primary-container); }

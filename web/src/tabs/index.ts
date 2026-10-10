@@ -1,10 +1,11 @@
 // Автообнаружение вкладок: tabs/<name>/{index.tsx, metadata.json}
-//   metadata.json — { id, label, icon, order?, adminOnly? }
+//   metadata.json — { id, label, icon, order?, adminOnly?, account? }
+//   account — вкладка в шторке профиля (капсула справа вверху), а не в навигации
 // Добавить вкладку = создать папку; этот файл трогать не нужно.
 import type { Page } from '../lib/api';
 import { ICONS } from '../components/icons';
 
-export interface TabMeta { id: string; label: string; icon: string; order?: number; adminOnly?: boolean }
+export interface TabMeta { id: string; label: string; icon: string; order?: number; adminOnly?: boolean; account?: boolean }
 export interface TabDef extends TabMeta { Icon: () => JSX.Element; Page: Page }
 
 const metas = import.meta.glob<{ default: unknown }>('./*/metadata.json', { eager: true });
@@ -19,7 +20,7 @@ function toMeta(name: string, raw: unknown): TabMeta {
         return v;
     };
     if (m.order !== undefined && typeof m.order !== 'number') throw new Error(`tabs/${name}/metadata.json: "order" должно быть числом`);
-    return { id: str('id'), label: str('label'), icon: str('icon'), order: m.order as number | undefined, adminOnly: m.adminOnly === true };
+    return { id: str('id'), label: str('label'), icon: str('icon'), order: m.order as number | undefined, adminOnly: m.adminOnly === true, account: m.account === true };
 }
 
 export const TABS: TabDef[] = Object.entries(metas)

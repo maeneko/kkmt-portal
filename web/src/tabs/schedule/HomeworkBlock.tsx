@@ -138,6 +138,11 @@ export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, sh
         catch (e) { showMsg(errText(e)); } finally { setBusy(false); }
     };
 
+    // Пусто совсем: тем, кто не правит, показываем одну строку вместо пустых заголовков
+    const nothing = !body && files.length === 0;
+    const hint = 'как тут пустовато...';
+    if (!part && nothing && !canEdit) return <div className={`hw${solution ? ' hw--solution' : ''}`}><p className="hw-empty">{hint}</p></div>;
+
     return (
         <div className={`hw${solution ? ' hw--solution' : ''}${part ? ' hw--bare' : ''}`}>
             {part !== 'files' && <>
@@ -154,10 +159,11 @@ export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, sh
                         <button className="btn btn--primary btn--sm" disabled={busy} onClick={save}>Сохранить</button>
                     </div>
                 </div>
-            ) : body ? <p className="hw-body"><Linkify text={body} /></p> : <p className="hw-empty">{general ? 'Ничего нет' : solution ? 'Не добавлено' : 'Не задано'}</p>}
+            ) : body ? <p className="hw-body"><Linkify text={body} /></p> : <p className="hw-empty">{!part && nothing ? hint : general ? 'Ничего нет' : solution ? 'Не добавлено' : 'Не задано'}</p>}
             </>}
 
-            {part !== 'body' && <>
+            {/* «Файлы» без файлов прячем у тех, кто не правит (в «Материалах» зона файлов остаётся: там своя вкладка) */}
+            {part !== 'body' && (part === 'files' || canEdit || files.length > 0) && <>
             <div className="hw-head">
                 <span className="hw-title">Файлы</span>
                 {canEdit && (
@@ -186,7 +192,7 @@ export default function HomeworkBlock({ date, pair, item, canEdit, onChanged, sh
                     <div className="hw-progress-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.pct}><i style={{ width: `${progress.pct}%` }} /></div>
                 </div>
             )}
-            {files.length === 0 ? <p className="hw-empty">Файлов нет</p>
+            {files.length === 0 ? (part === 'files' && <p className="hw-empty">Файлов нет</p>)
                 : <FileList files={files} onRemove={canEdit ? removeFile : undefined} onNote={canEdit ? saveNote : undefined} />}
             {canEdit && <p className="hint">Документы и картинки до {MAX_MB} МБ{!general && ', не больше 5 файлов на пару'}</p>}
             </>}
