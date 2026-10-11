@@ -67,28 +67,36 @@ export default function LessonDetails({ sel, closing, me, showMsg, onClose, onCh
     return <LessonSheet title={sel.subject} onClose={onClose}>{info}</LessonSheet>;
 }
 
-// Подробности пары на телефоне — шторка снизу: смахивание вниз за ручку и заголовок, нажатие на фон или ✕ закрывают.
+// Подробности пары на телефоне — шторка снизу: смахивание вниз (с любого места, если содержимое прокручено к началу), нажатие на фон или ✕ закрывают.
 function LessonSheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
     const [dy, setDy] = useState(0);
-    const startY = useRef<number | null>(null);
+    const start = useRef<{ y: number; t: number } | null>(null);
+    const body = useRef<HTMLDivElement>(null);
+    // тянуть шторку можно, пока содержимое у верха; в полях ввода жест оставляем им
+    const canDrag = (e: React.TouchEvent) => !body.current?.scrollTop && !(e.target as HTMLElement).closest('textarea, input');
     // закрытие с анимацией: шторка уезжает вниз, фон гаснет, потом размонтируется
     const [closing, setClosing] = useState(false);
     const close = () => { if (closing) return; setClosing(true); window.setTimeout(onClose, 260); };
     return (
         <div className="scrim-sheet" style={{ opacity: closing ? 0 : 1 - Math.min(dy / 500, 0.6) }} onClick={e => { if (e.target === e.currentTarget) close(); }}>
             <div className={`sheet sheet--lesson${closing ? ' sheet--out' : ''}`} role="dialog" aria-modal="true" aria-labelledby="lesson-title"
-                 style={dy && !closing ? { transform: `translateY(${dy}px)`, transition: 'none' } : undefined}>
-                <div className="sheet-drag"
-                     onTouchStart={e => { startY.current = e.touches[0].clientY; }}
-                     onTouchMove={e => { if (startY.current !== null) setDy(Math.max(0, e.touches[0].clientY - startY.current)); }}
-                     onTouchEnd={() => { startY.current = null; if (dy > 80) close(); else setDy(0); }}>
+                 style={dy && !closing ? { transform: `translateY(${dy}px)`, transition: 'none' } : undefined}
+                 onTouchStart={e => { start.current = canDrag(e) ? { y: e.touches[0].clientY, t: Date.now() } : null; }}
+                 onTouchMove={e => { if (start.current && canDrag(e)) setDy(Math.max(0, e.touches[0].clientY - start.current.y)); }}
+                 onTouchEnd={() => {
+                     // закрываем, если протянули на 60px или смахнули быстро (короткий рывок вниз)
+                     const s = start.current;
+                     start.current = null;
+                     if (s && (dy > 60 || (dy > 20 && dy / (Date.now() - s.t) > 0.4))) close(); else setDy(0);
+                 }}>
+                <div className="sheet-drag">
                     <button className="sheet-handle" aria-label="Закрыть" onClick={close} />
                     <div className="sheet-head">
                         <h2 className="sheet-title grow" id="lesson-title">{title}</h2>
                         <button className="btn-icon btn-icon--neutral" aria-label="Закрыть" onClick={close}>✕</button>
                     </div>
                 </div>
-                <div className="sheet-body">{children}</div>
+                <div className="sheet-body" ref={body}>{children}</div>
             </div>
         </div>
     );

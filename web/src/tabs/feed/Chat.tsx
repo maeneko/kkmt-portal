@@ -5,14 +5,19 @@ import Avatar from '../../components/Avatar';
 import Logo from '../../components/Logo';
 import Linkify from '../../components/Linkify';
 import { useConfirm } from '../../components/Dialog';
-import { IcoMegaphone, IcoMenu, IcoTrash, IcoUsers } from '../../components/icons';
+import { IcoBulb, IcoMegaphone, IcoMenu, IcoPulse, IcoTrash, IcoUsers } from '../../components/icons';
 
 interface Msg { id: number; channel: string; body: string; created_at: string; author_id: number; author_name: string; author_photo: string | null; pending?: boolean }
 export interface Channel { name: string; unread: number }
 type Page = { messages: Msg[]; hasMore: boolean };
 
-// Новости (глобальные и группы) — не чаты, а ленты постов в той же панели (на сервер эти ключи не уходят)
-const NEWS = { '@global': { title: 'Глобальные новости', scope: 'global', Icon: IcoMegaphone }, '@group': { title: 'Новости группы', scope: 'group', Icon: IcoUsers } } as const;
+// Общая лента, новости (глобальные и группы) и идеи — не чаты, а ленты в той же панели (на сервер эти ключи не уходят)
+const NEWS = {
+    '@all': { title: 'Общая лента', scope: 'all', Icon: IcoPulse },
+    '@global': { title: 'Глобальные новости', scope: 'global', Icon: IcoMegaphone },
+    '@group': { title: 'Новости группы', scope: 'group', Icon: IcoUsers },
+    '@ideas': { title: 'Идеи', scope: 'ideas', Icon: IcoBulb },
+} as const;
 type NewsKey = keyof typeof NEWS;
 const isNews = (c: string): c is NewsKey => c in NEWS;
 const title = (c: string) => c || 'Общий';
@@ -28,11 +33,11 @@ const day = (iso: string) => {
 
 // Лента как в Discord: слева каналы — новости (news рисует ленту постов) и чат «Общий», справа выбранный.
 // Новые сообщения приходят сразу (SSE /api/chat/stream); после обрыва связи пропущенное догружается.
-export default function Chat({ me, group, showMsg, news }: { me: Me; group: string; showMsg: (t: string) => void; news: (scope: 'global' | 'group') => ReactNode }) {
+export default function Chat({ me, group, showMsg, news }: { me: Me; group: string; showMsg: (t: string) => void; news: (scope: 'all' | 'global' | 'group' | 'ideas') => ReactNode }) {
     const [ask, dialog] = useConfirm();
     const [channels, setChannels] = useState<Channel[]>(() => cached<Channel[]>('/chat') ?? [{ name: '', unread: 0 }]);
-    // лента всегда открывается на глобальных новостях; выбранный канал не запоминается
-    const [cur, setCur] = useState<string>('@global');
+    // лента всегда открывается на общей ленте; выбранный канал не запоминается
+    const [cur, setCur] = useState<string>('@all');
     const [page, setPage] = useState<Page>(() => cached<Page>(msgsUrl(cur)) ?? { messages: [], hasMore: false });
     const msgs = page.messages;
     const [draft, setDraft] = useState('');
@@ -52,9 +57,11 @@ export default function Chat({ me, group, showMsg, news }: { me: Me; group: stri
     const pick = (c: string) => { setCur(c); setDrawer(false); };
     const unreadElsewhere = channels.some(c => c.name !== cur && c.unread > 0);
     // подзаголовок — название канала; кнопка «три полоски» стоит в строке заголовка страницы (гнездо title-slot в App)
-    const head = (text: string) => <div className="chat-head">{text}</div>;
+    const head = (text: string) => <div className="chat-head">{text}<span id="head-action" /></div>;
     const [slot, setSlot] = useState<HTMLElement | null>(null);
     useEffect(() => { setSlot(document.getElementById('title-slot')); }, []);
+    const [navSlot, setNavSlot] = useState<HTMLElement | null>(null);
+    useEffect(() => { setNavSlot(document.getElementById('nav-sub')); }, []);
     const menuBtn = slot && createPortal(
         <button className="btn-icon btn-icon--neutral chat-menu-btn" aria-label="Каналы" onClick={() => setDrawer(true)}>
             <IcoMenu />{unreadElsewhere && <i className="chat-head-dot" />}
@@ -155,9 +162,29 @@ export default function Chat({ me, group, showMsg, news }: { me: Me; group: stri
         catch (e) { showMsg(errText(e)); }
     };
 
+    // список каналов: на ПК — подпунктами под «Лентой» в главном меню (гнездо nav-sub), в свёрнутом меню и на телефоне — своей колонкой
+    const channelList = (
+        <>
+            <div className="chat-sec">Лента</div>
+            {Object.entries(NEWS).map(([k, n]) => (
+                <button key={k} className="chat-ch" aria-current={cur === k} onClick={() => pick(k)}>
+                    <span className="chat-ch-hash"><n.Icon /></span><span className="chat-ch-name">{n.title}</span>
+                </button>
+            ))}
+            <div className="chat-sec">Чаты</div>
+            {channels.map(c => (
+                <button key={c.name} className="chat-ch" aria-current={c.name === cur} title={title(c.name)} onClick={() => pick(c.name)}>
+                    <span className="chat-ch-hash">#</span><span className="chat-ch-name">{title(c.name)}</span>
+                    {c.unread > 0 && c.name !== cur && <span className="chat-count">{c.unread}</span>}
+                </button>
+            ))}
+        </>
+    );
+
     return (
         <div className={`chat${drawer ? ' chat--drawer' : ''}`}>
             {menuBtn}
+            {navSlot && createPortal(<div className="nd-sub-in">{channelList}</div>, navSlot)}
             <div className="chat-scrim" onClick={() => setDrawer(false)} />
             <nav className="chat-channels" aria-label="Каналы" {...swipe(false)}>
                 {/* капсула группы: на телефоне она уезжает сюда из шапки, пока открыта лента */}
@@ -165,18 +192,7 @@ export default function Chat({ me, group, showMsg, news }: { me: Me; group: stri
                     <Logo size={28} />
                     <span className="brand-text"><span className="brand-name">{group}</span><span className="brand-sub">Портал группы</span></span>
                 </div>
-                {Object.entries(NEWS).map(([k, n]) => (
-                    <button key={k} className="chat-ch" aria-current={cur === k} onClick={() => pick(k)}>
-                        <span className="chat-ch-hash"><n.Icon /></span><span className="chat-ch-name">{n.title}</span>
-                    </button>
-                ))}
-                <hr className="chat-sep" />
-                {channels.map(c => (
-                    <button key={c.name} className="chat-ch" aria-current={c.name === cur} title={title(c.name)} onClick={() => pick(c.name)}>
-                        <span className="chat-ch-hash">#</span><span className="chat-ch-name">{title(c.name)}</span>
-                        {c.unread > 0 && c.name !== cur && <span className="chat-count">{c.unread}</span>}
-                    </button>
-                ))}
+                {channelList}
             </nav>
             {isNews(cur) ? (
                 <section className="chat-pane" {...swipe(true)}>

@@ -265,6 +265,9 @@ func loginOrRegister(tg tgData, invite, realName string) (int64, loginResult, er
 		if id, err = res.LastInsertId(); err != nil {
 			return 0, 0, err
 		}
+		if _, err := tx.Exec("INSERT INTO activity (actor_id, kind, text) VALUES (?, 'user', 'присоединился(ась) к группе')", id); err != nil {
+			return 0, 0, err
+		}
 		if code != "" {
 			if _, err := tx.Exec("UPDATE invites SET used_count = used_count + 1, used_by = ?, used_at = NOW() WHERE code = ?", id, code); err != nil {
 				return 0, 0, err

@@ -99,6 +99,13 @@
 .mat-head-text b { font-size: 15px; font-weight: 500; line-height: 1.3; }
 .mat-head-text span { font-size: 12px; color: var(--neutral-text); }
 .mat-head .mat-date { align-self: center; flex-shrink: 0; height: 32px; padding: 0 12px 0 10px; }
+.mat-head .cb-label { margin-left: auto; flex-shrink: 0; }
+.mat-head-text b { white-space: nowrap; }
+@media (max-width: 640px) { .mat-head .cb-text { display: none; } .mat-head .cb-label { padding-right: 0; } }
+/* сделанное — приглушённая, зачёркнутая дата */
+.tree-line--done .tree-title, .mat-item--done .mat-head-text b { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--neutral-text); }
+.tree-line--done .tree-sub { opacity: .7; }
+.tree-line > .cb { margin-left: 2px; }
 @media (max-width: 640px) {
     .mat-top { flex-direction: column; align-items: stretch; gap: 8px; }
     .mat-top .mat-search { flex: none; }

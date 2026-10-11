@@ -139,6 +139,14 @@ var schema = []string{
         vk VARCHAR(64) NOT NULL DEFAULT '',
         tg VARCHAR(64) NOT NULL DEFAULT ''
     ) CHARACTER SET utf8mb4`,
+	// Отметки «сделано» у ДЗ: у каждого свои (пара 1–10 на дату)
+	`CREATE TABLE IF NOT EXISTS hw_done (
+        user_id INT NOT NULL,
+        date DATE NOT NULL,
+        pair_no TINYINT NOT NULL,
+        PRIMARY KEY (user_id, date, pair_no),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) CHARACTER SET utf8mb4`,
 	// Чат: channel '' — «Общий», иначе название предмета из расписания
 	`CREATE TABLE IF NOT EXISTS chat_messages (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -174,6 +182,35 @@ var schema = []string{
         kind VARCHAR(30) NOT NULL DEFAULT '',
         remote TINYINT(1) NOT NULL DEFAULT 0,
         PRIMARY KEY (date, pair_no)
+    ) CHARACTER SET utf8mb4`,
+	// Идеи группы и журнал смены их статусов
+	`CREATE TABLE IF NOT EXISTS ideas (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        author_id INT NOT NULL,
+        title VARCHAR(120) NOT NULL,
+        body TEXT NOT NULL,
+        status ENUM('open','accepted','rejected','done','clarify') NOT NULL DEFAULT 'open',
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
+    ) CHARACTER SET utf8mb4`,
+	`CREATE TABLE IF NOT EXISTS idea_events (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        idea_id INT NOT NULL,
+        actor_id INT NULL,
+        status ENUM('open','accepted','rejected','done','clarify') NOT NULL,
+        note VARCHAR(500) NOT NULL DEFAULT '',
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (idea_id) REFERENCES ideas(id) ON DELETE CASCADE,
+        FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+    ) CHARACTER SET utf8mb4`,
+	// Общая лента: события группы (новости, идеи, материалы, ДЗ, расписание, пользователи)
+	`CREATE TABLE IF NOT EXISTS activity (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        actor_id INT NULL,
+        kind VARCHAR(20) NOT NULL,
+        text VARCHAR(500) NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
     ) CHARACTER SET utf8mb4`,
 	`CREATE TABLE IF NOT EXISTS settings (
         k VARCHAR(50) PRIMARY KEY,
@@ -245,13 +282,41 @@ func migrate(conn *sqlx.DB) error {
 	if _, err := conn.Exec("ALTER TABLE users MODIFY role ENUM('student','admin','owner','moderator') NOT NULL DEFAULT 'student'"); err != nil {
 		return err
 	}
+	// статус идеи clarify («нужны подробности») добавлен позже; новое значение в конце ENUM — ALTER без перестройки таблицы
+	if _, err := conn.Exec("ALTER TABLE ideas MODIFY status ENUM('open','accepted','rejected','done','clarify') NOT NULL DEFAULT 'open'"); err != nil {
+		return err
+	}
+	if _, err := conn.Exec("ALTER TABLE idea_events MODIFY status ENUM('open','accepted','rejected','done','clarify') NOT NULL"); err != nil {
+		return err
+	}
+	// скриншот идеи: имя файла в каталоге загрузок
+	if _, err := addColumn("ideas", "image", "VARCHAR(80) NULL"); err != nil {
+		return err
+	}
 	// лента без лайков и комментариев: убираем их таблицы, если остались от прежних версий
 	for _, t := range []string{"comments", "post_likes"} {
 		if _, err := conn.Exec("DROP TABLE IF EXISTS " + t); err != nil {
 			return err
 		}
 	}
+	// первая загрузка общей ленты: подтягиваем уже существующие новости, материалы, идеи и участников
 	var cnt int
+	if err := conn.Get(&cnt, "SELECT COUNT(*) FROM activity"); err != nil {
+		return err
+	}
+	if cnt == 0 {
+		// одним запросом по порядку времени: лента сортируется по id
+		_, err := conn.Exec(`INSERT INTO activity (actor_id, kind, text, created_at)
+			SELECT actor_id, kind, text, created_at FROM (
+				SELECT author_id AS actor_id, CONCAT('news_', scope) AS kind, LEFT(body, 500) AS text, created_at FROM posts
+				UNION ALL SELECT created_by, 'material', CONCAT('добавил(а) материал «', title, '»'), created_at FROM materials WHERE created_by IS NOT NULL
+				UNION ALL SELECT author_id, 'idea', CONCAT('предложил(а) идею «', title, '»'), created_at FROM ideas
+				UNION ALL SELECT id, 'user', 'присоединился(ась) к группе', created_at FROM users
+			) t ORDER BY created_at`)
+		if err != nil {
+			return err
+		}
+	}
 	if err := conn.Get(&cnt, "SELECT COUNT(*) FROM pair_times"); err != nil {
 		return err
 	}

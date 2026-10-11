@@ -4,6 +4,7 @@ import { useConfirm } from '../../components/Dialog';
 import { IcoCalendar, IcoChevron, IcoFolder, IcoPlus, IcoTrash } from '../../components/icons';
 import { subjectAt, type Lesson } from '../schedule';
 import Linkify from '../../components/Linkify';
+import Checkbox from '../../components/Checkbox';
 import HomeworkBlock, { FileList, GENERAL, SOLUTION, hasContent, type HwItem } from '../schedule/HomeworkBlock';
 import './materials.css';
 
@@ -72,6 +73,19 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
 
     // выбранная вкладка дня («дата|пара» → файлы или решение)
     const [sideTab, setSideTab] = useState<Record<string, 'files' | 'solution'>>({});
+    // что человек отметил как сделанное («дата|пара»); отметки у каждого свои, хранятся на сервере
+    type Slot = { date: string; pair_no: number };
+    const slotKey = (s: Slot) => `${s.date}|${s.pair_no}`;
+    const [done, setDone] = useState<Set<string>>(() => new Set((cached<Slot[]>('/homework/done') ?? []).map(slotKey)));
+    useEffect(() => { api<Slot[]>('GET', '/homework/done').then(l => setDone(new Set(l.map(slotKey)))).catch(() => { /* отметки не критичны */ }); }, []);
+    // галочка меняется сразу, если сервер отказал — возвращается назад
+    const toggleDone = async (i: HwItem, on: boolean) => {
+        const key = slotKey(i), set = (v: boolean) => setDone(old => { const n = new Set(old); if (v) n.add(key); else n.delete(key); return n; });
+        set(on);
+        try { await api('PUT', '/homework/done', { date: i.date, pair_no: i.pair_no, done: on }); }
+        catch (e) { set(!on); showMsg(errText(e)); }
+    };
+    const isDone = (i: HwItem) => done.has(slotKey(i));
     const load = useCallback(() => {
         type Sched = { lessons: Lesson[]; semesterStart: string | null };
         const hwUrl = (sched: Sched) => {
@@ -116,7 +130,9 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
         .sort((a, b) => (sort === 'date' ? b.items[0].date.localeCompare(a.items[0].date) : 0) || a.name.localeCompare(b.name, 'ru'));
     const summary = (s: Subject) => {
         const hw = s.items.filter(i => i.body).length;
-        return [hw > 0 && `Заданий: ${hw}`, s.files > 0 && `Файлов: ${s.files}`].filter(Boolean).join(' · ');
+        // дни, где есть что делать (задание или файлы), и сколько из них отмечено сделанными
+        const tasks = s.items.filter(i => i.body || i.files.length > 0);
+        return [hw > 0 && `Заданий: ${hw}`, s.files > 0 && `Файлов: ${s.files}`, tasks.length > 0 && `Сделано: ${tasks.filter(isDone).length} из ${tasks.length}`].filter(Boolean).join(' · ');
     };
     const showGeneral = GENERAL_NAME.toLowerCase().includes(query.trim().toLowerCase());
     const generalSummary = materials.length ? `Материалов: ${materials.length}` : '';
@@ -184,6 +200,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                 {card && (
                     <div className="mat-head">
                         <div className="mat-head-text"><b>{fmtDate(i.date)}</b><span>{i.pair_no} пара</span></div>
+                        <label className="cb-label" title="Отметить, что сделано"><Checkbox checked={isDone(i)} onChange={e => toggleDone(i, e.target.checked)} /><span className="cb-text">Сделано</span></label>
                         <button className="chip chip--primary mat-date" title="Открыть в расписании" onClick={() => toLesson(i)}><IcoCalendar />В расписании</button>
                     </div>
                 )}
@@ -228,7 +245,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
             </div>
             <div className="mat-days">
                 {page.items.map(i => (
-                    <section key={`${i.date}|${i.pair_no}`} className="card mat-item">
+                    <section key={`${i.date}|${i.pair_no}`} className={`card mat-item${isDone(i) ? ' mat-item--done' : ''}`}>
                         {dayBody(i, page.name, true)}
                     </section>
                 ))}
@@ -304,7 +321,8 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                                             const k = `${s.name}|${i.date}|${i.pair_no}`, d = open.has(k);
                                             return (
                                                 <li key={k}>
-                                                    <div className="tree-line">
+                                                    <div className={`tree-line${isDone(i) ? ' tree-line--done' : ''}`}>
+                                                        <Checkbox aria-label="Сделано" checked={isDone(i)} onChange={e => toggleDone(i, e.target.checked)} />
                                                         <button className="tree-row" aria-expanded={d} onClick={() => flip(k)}>
                                                             <span className="tree-chev"><IcoChevron /></span>
                                                             <span className="grow">

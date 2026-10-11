@@ -11,6 +11,7 @@ func routes() *http.ServeMux {
 	userRoutes(m)
 	postRoutes(m)
 	chatRoutes(m)
+	ideaRoutes(m)
 	homeworkRoutes(m)
 	adminRoutes(m)
 
@@ -67,6 +68,10 @@ func userRoutes(m *http.ServeMux) {
 
 func postRoutes(m *http.ServeMux) {
 	m.HandleFunc(
+		"GET /api/activity",
+		authed(listActivity),
+	)
+	m.HandleFunc(
 		"GET /api/posts",
 		authed(listPosts),
 	)
@@ -84,10 +89,49 @@ func postRoutes(m *http.ServeMux) {
 	)
 }
 
+func ideaRoutes(m *http.ServeMux) {
+	m.HandleFunc(
+		"GET /api/ideas",
+		authed(listIdeas),
+	)
+	m.HandleFunc(
+		"POST /api/ideas",
+		authed(createIdea),
+	)
+	m.HandleFunc(
+		"PATCH /api/ideas/{id}",
+		moderator(setIdeaStatus),
+	)
+	m.HandleFunc(
+		"POST /api/ideas/{id}/reply",
+		authed(replyIdea),
+	)
+	m.HandleFunc(
+		"PUT /api/ideas/{id}/image",
+		authed(uploadIdeaImage),
+	)
+	m.HandleFunc(
+		"GET /api/ideas/{id}/image",
+		authed(ideaImage),
+	)
+	m.HandleFunc(
+		"DELETE /api/ideas/{id}",
+		authed(deleteIdea),
+	)
+}
+
 func homeworkRoutes(m *http.ServeMux) {
 	m.HandleFunc(
 		"GET /api/homework",
 		authed(listHomework),
+	)
+	m.HandleFunc(
+		"GET /api/homework/done",
+		authed(listDone),
+	)
+	m.HandleFunc(
+		"PUT /api/homework/done",
+		authed(setDone),
 	)
 	m.HandleFunc(
 		"PUT /api/homework",

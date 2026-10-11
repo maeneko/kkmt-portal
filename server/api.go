@@ -190,6 +190,7 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	logActivity(userOf(r).ID, "news_"+in.Scope, body)
 	writeJSON(w, 200, map[string]int64{"id": id})
 }
 
@@ -253,6 +254,46 @@ func deletePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err := db.Exec("DELETE FROM posts WHERE id = ?", r.PathValue("id"))
+	if !serverErr(w, err) {
+		respondOK(w)
+	}
+}
+
+// ---------- Отметки «сделано» ----------
+
+type DoneSlot struct {
+	Date   string `db:"date" json:"date"`
+	PairNo int    `db:"pair_no" json:"pair_no"`
+}
+
+// listDone — какие пары (ДЗ) этот человек отметил как сделанные.
+func listDone(w http.ResponseWriter, r *http.Request) {
+	list := []DoneSlot{}
+	if !serverErr(w, db.Select(&list, "SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date, pair_no FROM hw_done WHERE user_id = ?", userOf(r).ID)) {
+		writeJSON(w, 200, list)
+	}
+}
+
+// setDone ставит или снимает отметку «сделано» на пару (только 1–10: у решений и общих материалов отметок нет).
+func setDone(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Date   string `json:"date"`
+		PairNo int    `json:"pair_no"`
+		Done   bool   `json:"done"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if !validDate(in.Date) || in.PairNo < 1 || in.PairNo > 10 {
+		fail(w, 400, "Некорректная пара")
+		return
+	}
+	var err error
+	if in.Done {
+		_, err = db.Exec("INSERT IGNORE INTO hw_done (user_id, date, pair_no) VALUES (?, ?, ?)", userOf(r).ID, in.Date, in.PairNo)
+	} else {
+		_, err = db.Exec("DELETE FROM hw_done WHERE user_id = ? AND date = ? AND pair_no = ?", userOf(r).ID, in.Date, in.PairNo)
+	}
 	if !serverErr(w, err) {
 		respondOK(w)
 	}
@@ -415,15 +456,20 @@ func saveHomework(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var err error
-	if body := clip(in.Body, 5000); body == "" {
+	body := clip(in.Body, 5000)
+	if body == "" {
 		_, err = db.Exec("DELETE FROM homework WHERE date = ? AND pair_no = ?", in.Date, in.PairNo)
 	} else {
 		_, err = db.Exec(`INSERT INTO homework (date, pair_no, body, updated_by) VALUES (?, ?, ?, ?)
 			ON DUPLICATE KEY UPDATE body = VALUES(body), updated_by = VALUES(updated_by)`, in.Date, in.PairNo, body, userOf(r).ID)
 	}
-	if !serverErr(w, err) {
-		respondOK(w)
+	if serverErr(w, err) {
+		return
 	}
+	if body != "" {
+		logActivity(userOf(r).ID, "homework", "обновил(а) ДЗ "+slotLabel(in.Date, in.PairNo))
+	}
+	respondOK(w)
 }
 
 // Загрузка: тело запроса — сам файл, имя в ?name=, пара в ?date=&pair_no=
@@ -472,6 +518,7 @@ func uploadFile(w http.ResponseWriter, r *http.Request) {
 			date, pair, name, stored, size, userOf(r).ID)
 		if err == nil {
 			id, _ := res.LastInsertId()
+			logActivity(userOf(r).ID, "homework", "добавил(а) файл «"+name+"» "+slotLabel(date, pair))
 			writeJSON(w, 200, HomeworkFile{ID: id, Name: name, Size: size})
 			return
 		}
@@ -626,9 +673,11 @@ func saveTeacher(w http.ResponseWriter, r *http.Request) {
 			ON DUPLICATE KEY UPDATE phone = VALUES(phone), email = VALUES(email), vk = VALUES(vk), tg = VALUES(tg)`,
 			in.Name, in.Phone, in.Email, in.VK, in.TG)
 	}
-	if !serverErr(w, err) {
-		respondOK(w)
+	if serverErr(w, err) {
+		return
 	}
+	logActivity(userOf(r).ID, "schedule", "обновил(а) контакты преподавателя "+in.Name)
+	respondOK(w)
 }
 
 // ---------- Общие материалы ----------
@@ -668,6 +717,7 @@ func createMaterial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	logActivity(userOf(r).ID, "material", "добавил(а) материал «"+title+"»")
 	var m Material
 	if !serverErr(w, db.Get(&m, "SELECT "+materialCols+" FROM materials WHERE id = ?", id)) {
 		writeJSON(w, 200, m)
@@ -828,9 +878,11 @@ func setRole(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "Главного админа менять нельзя")
 		return
 	}
-	if _, err := db.Exec("UPDATE users SET role = ? WHERE id = ?", in.Role, id); !serverErr(w, err) {
-		respondOK(w)
+	if _, err := db.Exec("UPDATE users SET role = ? WHERE id = ?", in.Role, id); serverErr(w, err) {
+		return
 	}
+	logActivity(userOf(r).ID, "user", "изменил(а) роль пользователя "+userName(id)+": "+map[string]string{"student": "студент", "moderator": "модератор", "admin": "админ"}[in.Role])
+	respondOK(w)
 }
 
 // deleteUser удаляет пользователя: админа — только главный админ, главного — никто.
@@ -845,7 +897,9 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 	case role == "admin" && userOf(r).Role != "owner":
 		fail(w, 403, "Админа удаляет только главный админ")
 	default:
+		name := userName(id)
 		if _, err := db.Exec("DELETE FROM users WHERE id = ?", id); !serverErr(w, err) {
+			logActivity(userOf(r).ID, "user", "удалил(а) пользователя "+name)
 			respondOK(w)
 		}
 	}
@@ -891,9 +945,11 @@ func saveSchedule(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = tx.Commit()
 	}
-	if !serverErr(w, err) {
-		respondOK(w)
+	if serverErr(w, err) {
+		return
 	}
+	logActivity(userOf(r).ID, "schedule", "обновил(а) расписание")
+	respondOK(w)
 }
 
 // saveWeek сохраняет замены на неделю [from, to] целиком: старые замены в диапазоне удаляются, присланные записываются.
@@ -934,9 +990,11 @@ func saveWeek(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = tx.Commit()
 	}
-	if !serverErr(w, err) {
-		respondOK(w)
+	if serverErr(w, err) {
+		return
 	}
+	logActivity(userOf(r).ID, "schedule", "обновил(а) замены на неделю "+shortDate(in.From)+"–"+shortDate(in.To))
+	respondOK(w)
 }
 
 // savePairTimes сохраняет время пар целиком: n-й элемент списка — n-я пара.
@@ -972,9 +1030,11 @@ func savePairTimes(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = tx.Commit()
 	}
-	if !serverErr(w, err) {
-		respondOK(w)
+	if serverErr(w, err) {
+		return
 	}
+	logActivity(userOf(r).ID, "schedule", "изменил(а) время пар")
+	respondOK(w)
 }
 
 // saveSettings сохраняет дату начала семестра.

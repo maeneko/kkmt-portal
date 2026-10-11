@@ -1,21 +1,57 @@
 .post-body { white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-size: 14px; }
 .post--pinned { border-color: var(--primary); }
 
+/* Общая лента: событие — карточка с цветным значком по виду, новости — карточкой с текстом */
+.card.act { flex-direction: row; align-items: center; gap: 14px; padding: 12px 16px; }
+.act-ico { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; }
+.act-ico svg { width: 20px; height: 20px; }
+.act-text { font-size: 14px; line-height: 1.4; word-break: break-word; }
+.act-text b { font-weight: 600; }
+.act-tag { flex-shrink: 0; padding: 4px 10px; border-radius: var(--r-s); font-size: 12px; font-weight: 500; letter-spacing: .5px; }
+.act-ico--idea { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+.act-ico--material { background: var(--remote-container); color: var(--on-remote-container); }
+.act-ico--homework { background: var(--success-bg); color: var(--success-text); }
+.act-ico--schedule { background: var(--primary-container); color: var(--on-primary-container); }
+.act-ico--user { background: var(--neutral-bg); color: var(--neutral-text); }
+@media (max-width: 640px) { .act-tag { display: none; } }
+
+/* Идеи: заголовок-кнопка раскрывает идею; журнал — вертикальная линия с точками, как таймлайн в GitHub */
+.idea:not(.idea-head) { gap: 20px; padding: 20px; }
+.idea-shot { display: block; max-width: 100%; max-height: 360px; object-fit: contain; align-self: flex-start; border: 1px solid var(--outline-variant); border-radius: 12px; }
+.idea-back svg { transform: rotate(90deg); }
+.idea-head { flex-direction: row; align-items: center; gap: 12px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.idea-head:hover { background: var(--surface-container-high, var(--surface-container)); }
+.idea-title { display: flex; flex-direction: column; min-width: 0; }
+.idea-title b { font-weight: 500; word-break: break-word; }
+.log { list-style: none; margin: 8px 0 8px 6px; padding: 0; display: flex; flex-direction: column; gap: 24px; border-left: 2px solid var(--outline-variant); font-size: 13px; }
+.log li { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; padding-left: 22px; }
+.log-dot { position: absolute; left: -6px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 4px var(--surface-container); }
+.log-note { display: block; margin-top: 6px; line-height: 1.45; color: var(--neutral-text); word-break: break-word; }
+
 .chat-count {
-    display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+    display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: auto;
     border-radius: 9px; background: var(--primary); color: var(--on-primary); font-size: 11px; font-weight: 600;
 }
 
 /* Чат: слева каналы, справа переписка; высота — по окну, прокручивается только список сообщений */
 .chat { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 12px; height: calc(100dvh - 164px); min-height: 420px; }
-.chat-channels { display: flex; flex-direction: column; gap: 2px; padding: 8px; overflow-y: auto; border-radius: var(--r-card); background: var(--surface-bright); border: 1px solid var(--outline-variant); }
+/* каналы — как в Google Chat: без карточки, прямо на фоне страницы, с заголовками групп */
+.chat-channels { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 .chat-ch {
     display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--r-pill);
     background: transparent; color: var(--neutral-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
 }
 .chat-ch:hover { background: var(--surface-container); }
-/* полоска между «Новостями» и чатами */
-.chat-sep { flex-shrink: 0; align-self: stretch; margin: 6px 10px; border: 0; border-top: 1px solid var(--outline); opacity: .5; }
+.chat-sec { flex-shrink: 0; padding: 16px 12px 6px; font-size: 11px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--neutral-text); }
+.chat-brand + .chat-sec { padding-top: 4px; }
+/* каналы под «Лентой» в главном меню (ПК, меню развёрнуто): колонка каналов тогда не нужна */
+@media (min-width: 641px) {
+    .nd-sub .chat-sec:first-child { display: none; }
+    .nd-sub .chat-sec { padding: 10px 12px 4px; }
+    .app--nav-open .chat { grid-template-columns: minmax(0, 1fr); }
+    .app--nav-open .chat-channels { display: none; }
+}
+}
 .chat-ch[aria-current='true'] { background: var(--primary-container); color: var(--on-primary-container); font-weight: 500; }
 .chat-ch-hash { display: inline-flex; width: 16px; justify-content: center; opacity: .6; }
 .chat-ch[aria-current='true'] .chat-ch-hash { opacity: 1; }
@@ -35,6 +71,8 @@
     display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 0; border-bottom: 1px solid var(--outline-variant);
     background: none; color: inherit; font: inherit; font-weight: 500; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default;
 }
+#head-action { margin-left: auto; }
+.chat-head:has(#head-action:not(:empty)) { padding-block: 8px; }
 /* кнопка шторки каналов — только на телефоне */
 .chat-menu-btn { display: none; position: relative; color: var(--on-surface); }
 .chat-head-dot { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--primary); }
@@ -70,7 +108,7 @@
     /* каналы — шторка слева поверх всего */
     .chat-channels {
         position: fixed; z-index: 610; top: 0; bottom: 0; left: 0; width: min(300px, 82vw);
-        padding: calc(16px + env(safe-area-inset-top)) 10px 16px; border-radius: 0 var(--r-l) var(--r-l) 0; border: 0;
+        padding: calc(16px + env(safe-area-inset-top)) 10px 16px; border-radius: 0 var(--r-l) var(--r-l) 0; background: var(--surface-bright);
         transform: translateX(-105%); transition: transform 260ms var(--ease-std); box-shadow: var(--elev-3);
     }
     .chat--drawer .chat-channels { transform: none; }

@@ -67,6 +67,12 @@ export const IcoPhone = () => (
 export const IcoMegaphone = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" {...S}><path d="M3 10v4a1 1 0 0 0 1 1h3l6 4V5L7 9H4a1 1 0 0 0-1 1z"/><path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
 );
+export const IcoBulb = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...S}><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>
+);
+export const IcoPulse = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...S}><polyline points="3 12 7 12 10 4 14 20 17 12 21 12"/></svg>
+);
 export const IcoUsers = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" {...S}><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.2A6.5 6.5 0 0 1 21.5 20"/></svg>
 );
