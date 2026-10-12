@@ -44,6 +44,7 @@ type User struct {
 	LastName    *string `db:"last_name" json:"last_name"`
 	Bio         string  `db:"bio" json:"bio"`
 	Role        string  `db:"role" json:"role"`
+	VKLinked    bool    `db:"vk_linked" json:"vk_linked,omitempty"`
 }
 
 // userKey — ключ, под которым текущий пользователь лежит в контексте запроса.
@@ -86,7 +87,7 @@ func sessionUser(r *http.Request) *User {
 		return nil
 	}
 	var u User
-	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.real_name, u.first_name, u.last_name, u.bio, u.role
+	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.real_name, u.first_name, u.last_name, u.bio, u.role, u.vk_id IS NOT NULL AS vk_linked
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > NOW()`, sha(c.Value))
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -172,7 +173,7 @@ func config(w http.ResponseWriter, r *http.Request) {
 	if !set {
 		group = "Группа"
 	}
-	writeJSON(w, 200, map[string]any{"clientId": clientID(), "groupName": group, "devLogin": os.Getenv("DEV_LOGIN") == "1"})
+	writeJSON(w, 200, map[string]any{"clientId": clientID(), "groupName": group, "devLogin": os.Getenv("DEV_LOGIN") == "1", "vkClientId": os.Getenv("VK_CLIENT_ID")})
 }
 
 // me — профиль вошедшего пользователя.
@@ -216,8 +217,9 @@ func nullable(s string) *string {
 	return &s
 }
 
-// loginOrRegister: вход или регистрация. Новый пользователь, кроме владельца (OWNER_TG_ID), обязан передать инвайт.
-func loginOrRegister(tg tgData, invite, realName string) (int64, loginResult, error) {
+// loginOrRegister: вход или регистрация. col — колонка с id в соцсети: "tg_id" или "vk_id".
+// Новый пользователь, кроме владельца (OWNER_TG_ID), обязан передать инвайт.
+func loginOrRegister(col string, tg tgData, invite, realName string) (int64, loginResult, error) {
 	tx, err := db.Beginx()
 	if err != nil {
 		return 0, 0, err
@@ -225,16 +227,21 @@ func loginOrRegister(tg tgData, invite, realName string) (int64, loginResult, er
 	defer tx.Rollback() // после Commit ничего не делает
 
 	var id int64
-	err = tx.Get(&id, "SELECT id FROM users WHERE tg_id = ? FOR UPDATE", tg.ID)
+	err = tx.Get(&id, "SELECT id FROM users WHERE "+col+" = ? FOR UPDATE", tg.ID)
 	switch {
 	case err == nil:
-		_, err = tx.Exec("UPDATE users SET username = ?, first_name = ?, last_name = ?, photo_url = ?, last_seen = NOW() WHERE id = ?",
-			nullable(tg.Username), tg.FirstName, nullable(tg.LastName), nullable(tg.PhotoURL), id)
+		// у VK нет ника, а профиль мог быть создан через Telegram — имя и фото из VK не трогаем
+		if col == "tg_id" {
+			_, err = tx.Exec("UPDATE users SET username = ?, first_name = ?, last_name = ?, photo_url = ?, last_seen = NOW() WHERE id = ?",
+				nullable(tg.Username), tg.FirstName, nullable(tg.LastName), nullable(tg.PhotoURL), id)
+		} else {
+			_, err = tx.Exec("UPDATE users SET last_seen = NOW() WHERE id = ?", id)
+		}
 		if err != nil {
 			return 0, 0, err
 		}
 	case errors.Is(err, sql.ErrNoRows):
-		isOwner := strconv.FormatInt(tg.ID, 10) == os.Getenv("OWNER_TG_ID")
+		isOwner := col == "tg_id" && strconv.FormatInt(tg.ID, 10) == os.Getenv("OWNER_TG_ID")
 		code := strings.ToUpper(strings.TrimSpace(invite))
 		if !isOwner {
 			if invite == "" {
@@ -257,7 +264,7 @@ func loginOrRegister(tg tgData, invite, realName string) (int64, loginResult, er
 		if isOwner {
 			role, code = "owner", ""
 		}
-		res, err := tx.Exec("INSERT INTO users (tg_id, username, first_name, last_name, photo_url, real_name, role, invite_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		res, err := tx.Exec("INSERT INTO users ("+col+", username, first_name, last_name, photo_url, real_name, role, invite_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 			tg.ID, nullable(tg.Username), tg.FirstName, nullable(tg.LastName), nullable(tg.PhotoURL), nullable(clip(strings.Join(strings.Fields(realName), " "), 64)), role, nullable(code))
 		if err != nil {
 			return 0, 0, err
@@ -280,8 +287,8 @@ func loginOrRegister(tg tgData, invite, realName string) (int64, loginResult, er
 }
 
 // finishLogin: ответ на попытку входа — сессия или просьба о ключе.
-func finishLogin(w http.ResponseWriter, tg tgData, invite, realName string) {
-	id, res, err := loginOrRegister(tg, invite, realName)
+func finishLogin(w http.ResponseWriter, col string, tg tgData, invite, realName string) {
+	id, res, err := loginOrRegister(col, tg, invite, realName)
 	if serverErr(w, err) {
 		return
 	}
@@ -319,7 +326,7 @@ func telegramLogin(w http.ResponseWriter, r *http.Request) {
 		first = c.Name
 	}
 	id, _ := c.ID.Int64()
-	finishLogin(w, tgData{id, first, c.FamilyName, c.Username, c.Picture}, in.Invite, in.RealName)
+	finishLogin(w, "tg_id", tgData{id, first, c.FamilyName, c.Username, c.Picture}, in.Invite, in.RealName)
 }
 
 // Только для локальной разработки (DEV_LOGIN=1): вход без Telegram.
@@ -350,7 +357,7 @@ func devLogin(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = nick
 	}
-	finishLogin(w, tgData{ID: in.TgID, FirstName: name, Username: nick}, in.Invite, in.RealName)
+	finishLogin(w, "tg_id", tgData{ID: in.TgID, FirstName: name, Username: nick}, in.Invite, in.RealName)
 }
 
 // ---------- Telegram: id_token (OpenID Connect) ----------

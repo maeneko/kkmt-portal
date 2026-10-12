@@ -83,6 +83,15 @@ export default function App() {
     }, []);
 
     useEffect(() => { reloadMe().finally(() => setReady(true)); }, [reloadMe]);
+    // итог привязки VK: сервер возвращает на «/» с результатом во фрагменте (у невошедших его разбирает Login)
+    useEffect(() => {
+        if (!ready || !me) return;
+        const h = location.hash;
+        if (h === '#vk=linked') showMsg('VK привязан');
+        else if (h.startsWith('#vk_error')) showMsg(h === '#vk_error=taken' ? 'Этот VK уже привязан к другому аккаунту' : 'Не удалось привязать VK');
+        else return;
+        history.replaceState(null, '', location.pathname);
+    }, [ready, me, showMsg]);
     useEffect(() => { api<{ groupName: string }>('GET', '/config').then(c => setGroup(c.groupName)).catch(() => {}); }, []);
 
     useEffect(() => {

@@ -39,7 +39,8 @@ func connectDB() (*sqlx.DB, error) {
 var schema = []string{
 	`CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        tg_id BIGINT NOT NULL UNIQUE,
+        tg_id BIGINT NULL UNIQUE,
+        vk_id BIGINT NULL UNIQUE,
         username VARCHAR(64) NULL,
         first_name VARCHAR(128) NOT NULL DEFAULT '',
         last_name VARCHAR(128) NULL,
@@ -266,6 +267,13 @@ func migrate(conn *sqlx.DB) error {
 		return err
 	}
 	if _, err := addColumn("users", "real_name", "VARCHAR(64) NULL"); err != nil {
+		return err
+	}
+	// вход через VK ID: у такого пользователя нет tg_id
+	if _, err := addColumn("users", "vk_id", "BIGINT NULL UNIQUE"); err != nil {
+		return err
+	}
+	if _, err := conn.Exec("ALTER TABLE users MODIFY tg_id BIGINT NULL"); err != nil {
 		return err
 	}
 	// что именно сделать в прикреплённом файле

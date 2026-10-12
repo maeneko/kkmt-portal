@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, clip, errText } from '../lib/api';
 import TelegramLogin, { type TgSession } from './TelegramLogin';
+import { IcoVK } from './icons';
 import Logo from './Logo';
 import Avatar from './Avatar';
 import CodeInput from './CodeInput';
 
-interface Config { clientId: string; groupName: string; devLogin: boolean }
+interface Config { clientId: string; groupName: string; devLogin: boolean; vkClientId: string }
+// Вход через VK: пропуск, подписанный сервером, и данные для показа на шаге ключа
+interface VkSession { token: string; name: string; photo: string | null }
 
 export default function Login({ onDone, onConfig }: { onDone: () => void; onConfig: (c: Config) => void }) {
     const [cfg, setCfg] = useState<Config | null>(null);
     const [tg, setTg] = useState<TgSession | null>(null);
+    const [vk, setVk] = useState<VkSession | null>(null);
     const [devId, setDevId] = useState('1');
     const [devNick, setDevNick] = useState('');
     const [needInvite, setNeedInvite] = useState(false);
@@ -21,6 +25,18 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
     const [busy, setBusy] = useState(false);
 
     useEffect(() => { api<Config>('GET', '/config').then(c => { setCfg(c); onConfig(c); }).catch(e => setError(errText(e))); }, [onConfig]);
+
+    // Возврат с id.vk.com: сервер кладёт результат во фрагмент (#vk=пропуск&name=…&photo=…)
+    useEffect(() => {
+        const h = new URLSearchParams(location.hash.slice(1));
+        if (!h.has('vk') && !h.has('vk_error')) return;
+        history.replaceState(null, '', location.pathname);
+        const token = h.get('vk');
+        if (!token || token === 'linked') { setError('Не удалось войти через VK. Попробуйте ещё раз'); return; }
+        const s = { token, name: h.get('name') ?? '', photo: h.get('photo') || null };
+        setVk(s);
+        submit('/auth/vk', { vkToken: token });
+    }, []);
 
     const submit = async (path: string, body: Record<string, unknown>) => {
         setBusy(true); setError('');
@@ -42,17 +58,23 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
     const withInvite = { ...(invite.trim() ? { invite: invite.trim().toUpperCase() } : {}), ...(realName.trim() ? { realName: realName.trim() } : {}) };
     const sendTg = (u: TgSession) => { setTg(u); submit('/auth/telegram', { idToken: u.idToken, ...withInvite }); };
     const sendDev = () => submit('/auth/dev', { tgId: Number(devId), username: devNick, ...withInvite });
+    const sendVk = (extra: Record<string, unknown> = withInvite) => submit('/auth/vk', { vkToken: vk?.token, ...extra });
+    // повторная отправка тем способом входа, каким пришёл человек
+    const resend = () => (tg ? sendTg(tg) : vk ? sendVk() : sendDev());
     // Ключ отправляется сам, как только введён шестой символ (код передаём явно: state ещё не обновился)
     const sendCode = (code: string) => {
         const body = { invite: code.toUpperCase() };
         if (tg) submit('/auth/telegram', { idToken: tg.idToken, ...body });
+        else if (vk) sendVk(body);
         else submit('/auth/dev', { tgId: Number(devId), username: devNick, ...body });
     };
     const valid = /^[0-9A-Za-z]{6}$/.test(invite.trim());
     const nameOk = realName.trim().split(/\s+/).length >= 2;
-    const back = () => { setNeedInvite(false); setNeedName(false); setInvite(''); setRealName(''); setTg(null); setError(''); };
+    const back = () => { setNeedInvite(false); setNeedName(false); setInvite(''); setRealName(''); setTg(null); setVk(null); setError(''); };
     // Кто регистрируется: данные из виджета Telegram (или dev-ID без виджета)
-    const who = tg
+    const who = vk
+        ? { id: 'VK', name: clip(vk.name || 'VK'), nick: '', photo: vk.photo }
+        : tg
         ? { id: tg.id, name: clip(tg.name || tg.nick || `ID ${tg.id}`), nick: tg.nick, photo: tg.photo }
         : { id: devId, name: clip(devNick.replace(/^@/, '') || `Dev ${devId}`), nick: devNick.replace(/^@/, ''), photo: null };
 
@@ -66,8 +88,8 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
                         <p className="login-sub">Ключ принят. Введите фамилию и имя — их видят только староста и модераторы:</p>
                         <input className="field" autoFocus maxLength={64} autoComplete="name" placeholder="Иванов Иван" aria-label="Фамилия и имя"
                                value={realName} onChange={e => { setRealName(e.target.value); setError(''); }}
-                               onKeyDown={e => e.key === 'Enter' && nameOk && !busy && (tg ? sendTg(tg) : sendDev())} />
-                        <button className="btn btn--primary btn--full" disabled={busy || !nameOk} onClick={() => (tg ? sendTg(tg) : sendDev())}>Готово</button>
+                               onKeyDown={e => e.key === 'Enter' && nameOk && !busy && resend()} />
+                        <button className="btn btn--primary btn--full" disabled={busy || !nameOk} onClick={resend}>Готово</button>
                         <button className="btn btn--outline btn--full" onClick={back}>Назад</button>
                     </>
                 ) : needInvite ? (
@@ -76,22 +98,25 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
                             <Avatar name={who.name} photo={who.photo} />
                             <div className="login-who-text">
                                 <span className="login-who-name">{who.name}</span>
-                                <span className="hint">{who.nick ? `@${who.nick}` : `ID ${who.id}`}</span>
+                                <span className="hint">{who.nick ? `@${who.nick}` : vk ? 'VK ID' : `ID ${who.id}`}</span>
                             </div>
                         </div>
                         <p className="login-sub">Вы новый участник. Введите инвайт-ключ от старосты (6 символов):</p>
                         <div className="code-row">
                             <CodeInput value={invite} disabled={busy} error={!!error}
                                        onChange={v => { setInvite(v); setError(''); if (/^[0-9A-Za-z]{6}$/.test(v) && !busy) sendCode(v); }}
-                                       onEnter={() => valid && (tg ? sendTg(tg) : sendDev())} />
+                                       onEnter={() => valid && resend()} />
                         </div>
                         <button className="btn btn--outline btn--full" onClick={back}>Назад</button>
                     </>
                 ) : (
                     <>
-                        <p className="login-sub">{cfg?.groupName ? `Портал группы ${cfg.groupName}. ` : ''}Войдите через Telegram:</p>
+                        <p className="login-sub">{cfg?.groupName ? `Портал группы ${cfg.groupName}. ` : ''}Войдите через {cfg?.vkClientId ? 'Telegram или VK' : 'Telegram'}:</p>
                         {cfg?.clientId && <TelegramLogin clientId={cfg.clientId} onAuth={sendTg} />}
-                        {cfg && !cfg.clientId && !cfg.devLogin && <p className="login-error">Вход через Telegram не настроен: задайте TELEGRAM_CLIENT_ID в .env</p>}
+                        {cfg?.vkClientId && (
+                            <button className="btn btn--outline btn--full" onClick={() => { location.href = '/api/auth/vk'; }}><IcoVK /> Войти через VK ID</button>
+                        )}
+                        {cfg && !cfg.clientId && !cfg.vkClientId && !cfg.devLogin && <p className="login-error">Вход не настроен: задайте TELEGRAM_CLIENT_ID или VK_CLIENT_ID в .env</p>}
                         {cfg?.devLogin && (
                             <>
                                 <p className="hint">Тестовый вход (без виджета Telegram): данные, которые иначе пришли бы из виджета</p>

@@ -12,6 +12,7 @@ export interface Me {
     real_name?: string | null; // фамилия и имя; приходит только модераторам и выше (и своё)
     bio: string;
     role: Role;
+    vk_linked?: boolean;
 }
 
 export interface PageProps {

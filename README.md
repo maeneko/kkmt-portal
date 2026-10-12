@@ -5,7 +5,7 @@ React + Vite + TS (`web/`), Go + MySQL (`server/`), один контейнер.
 
 ## Запуск на сервере
 1. В BotFather: создать бота → открыть бота → **Login Widget** → добавить Allowed URL `https://ваш-домен`; там же показан **Client ID** (вход работает только по https). Токен бота приложению не нужен.
-2. `cp .env.example .env` и заполнить: `TELEGRAM_CLIENT_ID`, `OWNER_TG_ID` (ваш Telegram ID — первый вход без ключа, роль «главный админ»), параметры БД.
+2. `cp .env.example .env` и заполнить: `TELEGRAM_CLIENT_ID`, `OWNER_TG_ID` (ваш Telegram ID — первый вход без ключа, роль «главный админ»), параметры БД. Для входа через VK — `VK_CLIENT_ID` (приложение на id.vk.com; доверенный redirect URL — `https://ваш-домен/api/auth/vk/callback`).
 
 Вход идёт через «Log In With Telegram» (OpenID Connect): сервер проверяет подпись `id_token` по встроенным ключам Telegram (`server/telegram_jwks.json`, обновить: `npm run update-jwks`), поэтому серверу не нужен доступ к Telegram.
 3. MySQL: создать базу и пользователя (таблицы создаются сами при старте):

@@ -40,6 +40,7 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
                             <span className={`chip ${me.role === 'student' ? '' : 'chip--primary'}`}>{ROLE_LABEL[me.role]}</span>
                         </div>
                     </div>
+                    {!me.vk_linked && <button className="btn btn--outline btn--sm" onClick={() => { location.href = '/api/auth/vk'; }}>Привязать VK</button>}
                     <div className={`fold profile-edit-fold${editing ? '' : ' fold--open'}`}>
                         <div className="fold-in"><button className="btn btn--tonal btn--sm profile-edit" tabIndex={editing ? -1 : 0} onClick={() => setEditing(true)}><IcoEdit /> Редактировать</button></div>
                     </div>

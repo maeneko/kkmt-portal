@@ -33,6 +33,18 @@ func authRoutes(m *http.ServeMux) {
 		limited(telegramLogin),
 	)
 	m.HandleFunc(
+		"GET /api/auth/vk",
+		limited(vkStart),
+	)
+	m.HandleFunc(
+		"GET /api/auth/vk/callback",
+		limited(vkCallback),
+	)
+	m.HandleFunc(
+		"POST /api/auth/vk",
+		limited(vkLogin),
+	)
+	m.HandleFunc(
 		"POST /api/auth/dev",
 		limited(devLogin),
 	)
