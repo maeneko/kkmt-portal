@@ -83,7 +83,8 @@ export default function Schedule({ me, showMsg, focus, goTo, openLesson: open, c
     useEffect(() => { if (editing) closeLesson(); }, [editing, closeLesson]);
 
     const load = useCallback(() => { api<Data>('GET', '/schedule').then(setData).catch(e => showMsg(errText(e))); }, [showMsg]);
-    useEffect(() => { load(); }, [load]);
+    // lessonRev: в подробностях пары что-то поменяли (например, переименовали преподавателя) — перечитать расписание
+    useEffect(() => { load(); }, [load, lessonRev]);
 
     const weekDates = useMemo(() => {
         const mon = new Date(target); mon.setDate(target.getDate() - ((target.getDay() + 6) % 7));

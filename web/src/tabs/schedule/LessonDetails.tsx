@@ -45,7 +45,7 @@ export default function LessonDetails({ sel, closing, me, showMsg, onClose, onCh
                 <div><dt>Пара</dt><dd>{pair}{t ? ` · ${t.start_time}–${t.end_time}` : ''}</dd></div>
                 <div><dt>Аудитория</dt><dd>{sel.room || '—'}</dd></div>
                 {sel.teacher
-                    ? <div className="li-wide li-teacher"><TeacherInfo name={sel.teacher} contact={data?.teachers?.find(x => x.name === sel.teacher)} canEdit={mod} onSaved={loadData} showMsg={showMsg} /></div>
+                    ? <div className="li-wide li-teacher"><TeacherInfo name={sel.teacher} contact={data?.teachers?.find(x => x.name === sel.teacher)} canEdit={mod} onSaved={renamed => { loadData(); if (renamed) { onChanged(); onClose(); } }} showMsg={showMsg} /></div>
                     : <div className="li-wide"><dt>Преподаватель</dt><dd>—</dd></div>}
             </dl>
             <HomeworkBlock {...hwProps} pair={pair} item={item} />

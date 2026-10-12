@@ -648,15 +648,24 @@ func attachFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // saveTeacher сохраняет контакты преподавателя (телефон, почта, ВК, Telegram); если все пустые — запись удаляется.
+// Если задан NewName, преподаватель переименовывается везде, где его имя лежит строкой (расписание, замены, память OCR);
+// если такое имя уже есть, они сливаются в одного, а контакты берутся из запроса.
 func saveTeacher(w http.ResponseWriter, r *http.Request) {
-	var in Teacher
+	var in struct {
+		Teacher
+		NewName string `json:"newName"`
+	}
 	if !decode(w, r, &in) {
 		return
 	}
-	in.Name, in.Phone, in.Email = clip(in.Name, 200), clip(in.Phone, 30), clip(in.Email, 100)
+	in.Name, in.NewName, in.Phone, in.Email = clip(in.Name, 200), clip(in.NewName, 200), clip(in.Phone, 30), clip(in.Email, 100)
 	if in.Name == "" {
 		fail(w, 400, "Не указан преподаватель")
 		return
+	}
+	old := in.Name
+	if in.NewName != "" {
+		in.Name = in.NewName
 	}
 	var okVK, okTG bool
 	in.VK, okVK = profile(in.VK, vkRe, vkOk)
@@ -665,18 +674,41 @@ func saveTeacher(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "ВК и Telegram — ссылка на профиль или имя (@name)")
 		return
 	}
-	var err error
-	if in.Phone == "" && in.Email == "" && in.VK == "" && in.TG == "" {
-		_, err = db.Exec("DELETE FROM teachers WHERE name = ?", in.Name)
-	} else {
-		_, err = db.Exec(`INSERT INTO teachers (name, phone, email, vk, tg) VALUES (?, ?, ?, ?, ?)
+	tx, err := db.Beginx()
+	if serverErr(w, err) {
+		return
+	}
+	defer tx.Rollback()
+	if old != in.Name {
+		for _, q := range []string{
+			"UPDATE lessons SET teacher = ? WHERE teacher = ?",
+			"UPDATE lesson_changes SET teacher = ? WHERE teacher = ?",
+			"UPDATE ocr_aliases SET value = ? WHERE kind = 'teacher' AND value = ?",
+			"DELETE FROM teachers WHERE name = ? OR name = ?",
+		} {
+			if err == nil {
+				_, err = tx.Exec(q, in.Name, old)
+			}
+		}
+	}
+	if err == nil && in.Phone == "" && in.Email == "" && in.VK == "" && in.TG == "" {
+		_, err = tx.Exec("DELETE FROM teachers WHERE name = ?", in.Name)
+	} else if err == nil {
+		_, err = tx.Exec(`INSERT INTO teachers (name, phone, email, vk, tg) VALUES (?, ?, ?, ?, ?)
 			ON DUPLICATE KEY UPDATE phone = VALUES(phone), email = VALUES(email), vk = VALUES(vk), tg = VALUES(tg)`,
 			in.Name, in.Phone, in.Email, in.VK, in.TG)
+	}
+	if err == nil {
+		err = tx.Commit()
 	}
 	if serverErr(w, err) {
 		return
 	}
-	logActivity(userOf(r).ID, "schedule", "обновил(а) контакты преподавателя "+in.Name)
+	if old != in.Name {
+		logActivity(userOf(r).ID, "schedule", "переименовал(а) преподавателя "+old+" в "+in.Name)
+	} else {
+		logActivity(userOf(r).ID, "schedule", "обновил(а) контакты преподавателя "+in.Name)
+	}
 	respondOK(w)
 }
 
