@@ -5,6 +5,7 @@ import { IcoVK } from './icons';
 import Logo from './Logo';
 import Avatar from './Avatar';
 import CodeInput from './CodeInput';
+import RosterPicker, { type RosterName } from './RosterPicker';
 
 interface Config { clientId: string; groupName: string; devLogin: boolean; vkClientId: string }
 // Вход через VK: пропуск, подписанный сервером, и данные для показа на шаге ключа
@@ -18,9 +19,10 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
     const [devNick, setDevNick] = useState('');
     const [needInvite, setNeedInvite] = useState(false);
     const [invite, setInvite] = useState('');
-    // после верного ключа новый участник обязательно вводит «Фамилия Имя»
+    // после верного ключа новый участник обязательно выбирает своё имя в списке группы (вручную имя не вводится)
     const [needName, setNeedName] = useState(false);
-    const [realName, setRealName] = useState('');
+    const [names, setNames] = useState<RosterName[]>([]);
+    const [rosterId, setRosterId] = useState(0);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
 
@@ -45,8 +47,12 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
             onDone();
         } catch (e) {
             if (e instanceof ApiError && e.data.needName) {
+                const free = (e.data.names as RosterName[] | undefined) ?? [];
                 setNeedName(true);
-                if (realName.trim()) setError(e.message);
+                setNames(free);
+                // выбранное имя могли занять, пока человек думал
+                setRosterId(id => (free.some(n => n.id === id) ? id : 0));
+                if (rosterId) setError(e.message);
             } else if (e instanceof ApiError && e.data.needInvite) {
                 setNeedInvite(true);
                 setNeedName(false);
@@ -55,7 +61,7 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
         } finally { setBusy(false); }
     };
 
-    const withInvite = { ...(invite.trim() ? { invite: invite.trim().toUpperCase() } : {}), ...(realName.trim() ? { realName: realName.trim() } : {}) };
+    const withInvite = { ...(invite.trim() ? { invite: invite.trim().toUpperCase() } : {}), ...(rosterId ? { rosterId } : {}) };
     const sendTg = (u: TgSession) => { setTg(u); submit('/auth/telegram', { idToken: u.idToken, ...withInvite }); };
     const sendDev = () => submit('/auth/dev', { tgId: Number(devId), username: devNick, ...withInvite });
     const sendVk = (extra: Record<string, unknown> = withInvite) => submit('/auth/vk', { vkToken: vk?.token, ...extra });
@@ -69,8 +75,8 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
         else submit('/auth/dev', { tgId: Number(devId), username: devNick, ...body });
     };
     const valid = /^[0-9A-Za-z]{6}$/.test(invite.trim());
-    const nameOk = realName.trim().split(/\s+/).length >= 2;
-    const back = () => { setNeedInvite(false); setNeedName(false); setInvite(''); setRealName(''); setTg(null); setVk(null); setError(''); };
+    const nameOk = rosterId > 0;
+    const back = () => { setNeedInvite(false); setNeedName(false); setNames([]); setRosterId(0); setInvite(''); setTg(null); setVk(null); setError(''); };
     // Кто регистрируется: данные из виджета Telegram (или dev-ID без виджета)
     const who = vk
         ? { id: 'VK', name: clip(vk.name || 'VK'), nick: '', photo: vk.photo }
@@ -85,10 +91,8 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
                 <h1 className="login-title">{needInvite ? 'Первый вход' : 'Приветствую вас!'}</h1>
                 {needName ? (
                     <>
-                        <p className="login-sub">Ключ принят. Введите фамилию и имя — их видят только староста и модераторы:</p>
-                        <input className="field" autoFocus maxLength={64} autoComplete="name" placeholder="Иванов Иван" aria-label="Фамилия и имя"
-                               value={realName} onChange={e => { setRealName(e.target.value); setError(''); }}
-                               onKeyDown={e => e.key === 'Enter' && nameOk && !busy && resend()} />
+                        <p className="login-sub">Ключ принят. Найдите себя в списке группы, имя потом не поменять:</p>
+                        <RosterPicker names={names} value={rosterId} onChange={id => { setRosterId(id); setError(''); }} />
                         <button className="btn btn--primary btn--full" disabled={busy || !nameOk} onClick={resend}>Готово</button>
                         <button className="btn btn--outline btn--full" onClick={back}>Назад</button>
                     </>

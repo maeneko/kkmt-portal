@@ -93,12 +93,11 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// updateMe меняет присланные поля: отображаемое имя (до 32 символов; пустое — имя из Telegram)
-// и реальное имя «Фамилия Имя» (до 64 символов).
+// updateMe меняет отображаемое имя (до 32 символов; пустое — имя из Telegram).
+// «Фамилия Имя» вручную не меняется: его выбирают из списка группы.
 func updateMe(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		DisplayName *string `json:"display_name"`
-		RealName    *string `json:"real_name"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -106,9 +105,6 @@ func updateMe(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if in.DisplayName != nil {
 		_, err = db.Exec("UPDATE users SET display_name = ? WHERE id = ?", nullable(clip(*in.DisplayName, 32)), userOf(r).ID)
-	}
-	if err == nil && in.RealName != nil {
-		_, err = db.Exec("UPDATE users SET real_name = ? WHERE id = ?", nullable(clip(*in.RealName, 64)), userOf(r).ID)
 	}
 	if !serverErr(w, err) {
 		respondOK(w)

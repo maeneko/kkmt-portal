@@ -213,6 +213,13 @@ var schema = []string{
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
     ) CHARACTER SET utf8mb4`,
+	// Список группы: из него человек выбирает своё «Фамилия Имя» (одно имя — один человек); ведёт админ
+	`CREATE TABLE IF NOT EXISTS roster (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(64) NOT NULL UNIQUE,
+        user_id INT NULL UNIQUE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) CHARACTER SET utf8mb4`,
 	// Посещаемость: отметка на каждую пару и дату хранится постоянно (история), present = 0 — не был
 	`CREATE TABLE IF NOT EXISTS attendance (
         date DATE NOT NULL,

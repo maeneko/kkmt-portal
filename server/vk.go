@@ -154,9 +154,8 @@ func vkCallback(w http.ResponseWriter, r *http.Request) {
 
 func vkLogin(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		VKToken  string `json:"vkToken"`
-		Invite   string `json:"invite"`
-		RealName string `json:"realName"`
+		VKToken string `json:"vkToken"`
+		signup
 	}
 	if !decode(w, r, &in) {
 		return
@@ -172,5 +171,5 @@ func vkLogin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "Вход через VK не подтверждён. Попробуйте ещё раз")
 		return
 	}
-	finishLogin(w, "vk_id", tgData{ID: p.ID, FirstName: p.First, LastName: p.Last, PhotoURL: p.Photo}, in.Invite, in.RealName)
+	finishLogin(w, "vk_id", tgData{ID: p.ID, FirstName: p.First, LastName: p.Last, PhotoURL: p.Photo}, in.signup)
 }

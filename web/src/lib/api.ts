@@ -12,6 +12,7 @@ export interface Me {
     real_name?: string | null; // фамилия и имя; приходит только модераторам и выше (и своё)
     bio: string;
     role: Role;
+    need_roster?: boolean; // нужно выбрать своё имя в списке группы
     tg_linked?: boolean;
     vk_id?: number;
 }

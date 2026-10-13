@@ -44,6 +44,7 @@ type User struct {
 	LastName    *string `db:"last_name" json:"last_name"`
 	Bio         string  `db:"bio" json:"bio"`
 	Role        string  `db:"role" json:"role"`
+	NeedRoster  bool    `db:"need_roster" json:"need_roster,omitempty"` // нужно выбрать своё имя в списке группы
 	TGLinked    bool    `db:"tg_linked" json:"tg_linked,omitempty"`
 	VKID        *int64  `db:"vk_id" json:"vk_id,omitempty"` // только в /api/me: в списках не выбирается
 }
@@ -88,7 +89,8 @@ func sessionUser(r *http.Request) *User {
 		return nil
 	}
 	var u User
-	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.real_name, u.first_name, u.last_name, u.bio, u.role, u.tg_id IS NOT NULL AS tg_linked, u.vk_id
+	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.real_name, u.first_name, u.last_name, u.bio, u.role, u.tg_id IS NOT NULL AS tg_linked,
+			(u.role IN ('student', 'moderator') AND EXISTS (SELECT 1 FROM roster) AND NOT EXISTS (SELECT 1 FROM roster r WHERE r.user_id = u.id)) AS need_roster, u.vk_id
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > NOW()`, sha(c.Value))
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -226,8 +228,16 @@ const (
 	loginOK loginResult = iota
 	needInvite
 	badInvite
-	needName // ключ верный, но не введены фамилия и имя
+	needName // ключ верный, но имя в списке группы не выбрано
+	badName  // выбранное имя уже занято
+	noName   // в списке группы не осталось свободных имён
 )
+
+// signup — что новый участник присылает при регистрации; повторяется, пока вход не завершится.
+type signup struct {
+	Invite   string `json:"invite"`
+	RosterID int64  `json:"rosterId"` // имя, выбранное в списке группы
+}
 
 // inviteRe — формат инвайт-ключа: 6 символов 0-9 и A-Z.
 var inviteRe = regexp.MustCompile(`^[0-9A-Z]{6}$`)
@@ -241,8 +251,8 @@ func nullable(s string) *string {
 }
 
 // loginOrRegister: вход или регистрация. col — колонка с id в соцсети: "tg_id" или "vk_id".
-// Новый пользователь, кроме владельца (OWNER_TG_ID), обязан передать инвайт.
-func loginOrRegister(col string, tg tgData, invite, realName string) (int64, loginResult, error) {
+// Новый пользователь, кроме владельца (OWNER_TG_ID), обязан передать инвайт и выбрать своё имя в списке группы.
+func loginOrRegister(col string, tg tgData, s signup) (int64, loginResult, error) {
 	tx, err := db.Beginx()
 	if err != nil {
 		return 0, 0, err
@@ -265,9 +275,11 @@ func loginOrRegister(col string, tg tgData, invite, realName string) (int64, log
 		}
 	case errors.Is(err, sql.ErrNoRows):
 		isOwner := col == "tg_id" && strconv.FormatInt(tg.ID, 10) == os.Getenv("OWNER_TG_ID")
-		code := strings.ToUpper(strings.TrimSpace(invite))
+		code := strings.ToUpper(strings.TrimSpace(s.Invite))
+		var name string
+		var claim int64
 		if !isOwner {
-			if invite == "" {
+			if s.Invite == "" {
 				return 0, needInvite, nil
 			}
 			var found string
@@ -278,17 +290,32 @@ func loginOrRegister(col string, tg tgData, invite, realName string) (int64, log
 			if err != nil {
 				return 0, 0, err
 			}
-			// новый участник обязательно указывает «Фамилия Имя» (ключ до этого не тратится)
-			if len(strings.Fields(realName)) < 2 {
+			// новый участник обязательно выбирает своё имя в списке группы (ключ до этого не тратится)
+			var free int
+			if err := tx.Get(&free, "SELECT COUNT(*) FROM roster WHERE user_id IS NULL"); err != nil {
+				return 0, 0, err
+			}
+			switch {
+			case free == 0:
+				return 0, noName, nil
+			case s.RosterID == 0:
 				return 0, needName, nil
 			}
+			err = tx.Get(&name, "SELECT name FROM roster WHERE id = ? AND user_id IS NULL FOR UPDATE", s.RosterID)
+			if errors.Is(err, sql.ErrNoRows) {
+				return 0, badName, nil
+			}
+			if err != nil {
+				return 0, 0, err
+			}
+			claim = s.RosterID
 		}
 		role := "student"
 		if isOwner {
 			role, code = "owner", ""
 		}
 		res, err := tx.Exec("INSERT INTO users ("+col+", username, first_name, last_name, photo_url, real_name, role, invite_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			tg.ID, nullable(tg.Username), tg.FirstName, nullable(tg.LastName), nullable(tg.PhotoURL), nullable(clip(strings.Join(strings.Fields(realName), " "), 64)), role, nullable(code))
+			tg.ID, nullable(tg.Username), tg.FirstName, nullable(tg.LastName), nullable(tg.PhotoURL), nullable(name), role, nullable(code))
 		if err != nil {
 			return 0, 0, err
 		}
@@ -297,6 +324,11 @@ func loginOrRegister(col string, tg tgData, invite, realName string) (int64, log
 		}
 		if _, err := tx.Exec("INSERT INTO activity (actor_id, kind, text) VALUES (?, 'user', 'присоединился(ась) к группе')", id); err != nil {
 			return 0, 0, err
+		}
+		if claim != 0 {
+			if _, err := tx.Exec("UPDATE roster SET user_id = ? WHERE id = ?", id, claim); err != nil {
+				return 0, 0, err
+			}
 		}
 		if code != "" {
 			if _, err := tx.Exec("UPDATE invites SET used_count = used_count + 1, used_by = ?, used_at = NOW() WHERE code = ?", id, code); err != nil {
@@ -310,8 +342,8 @@ func loginOrRegister(col string, tg tgData, invite, realName string) (int64, log
 }
 
 // finishLogin: ответ на попытку входа — сессия или просьба о ключе.
-func finishLogin(w http.ResponseWriter, col string, tg tgData, invite, realName string) {
-	id, res, err := loginOrRegister(col, tg, invite, realName)
+func finishLogin(w http.ResponseWriter, col string, tg tgData, s signup) {
+	id, res, err := loginOrRegister(col, tg, s)
 	if serverErr(w, err) {
 		return
 	}
@@ -320,8 +352,19 @@ func finishLogin(w http.ResponseWriter, col string, tg tgData, invite, realName 
 		writeJSON(w, 403, map[string]any{"needInvite": true, "error": "Нужен инвайт-ключ"})
 	case badInvite:
 		writeJSON(w, 403, map[string]any{"needInvite": true, "error": "Неверный или использованный ключ"})
-	case needName:
-		writeJSON(w, 403, map[string]any{"needName": true, "error": "Введите фамилию и имя"})
+	case needName, badName:
+		// свободные имена отдаём только тому, кто прошёл проверку входа и ключа
+		names := []RosterEntry{}
+		if serverErr(w, db.Select(&names, "SELECT id, name FROM roster WHERE user_id IS NULL ORDER BY name")) {
+			return
+		}
+		msg := "Выберите себя в списке"
+		if res == badName {
+			msg = "Это имя уже занято. Выберите другое"
+		}
+		writeJSON(w, 403, map[string]any{"needName": true, "names": names, "error": msg})
+	case noName:
+		fail(w, 403, "В списке группы нет свободных имён. Обратитесь к старосте")
 	default:
 		if !serverErr(w, startSession(w, id)) {
 			respondOK(w)
@@ -331,9 +374,8 @@ func finishLogin(w http.ResponseWriter, col string, tg tgData, invite, realName 
 
 func telegramLogin(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		IDToken  string `json:"idToken"`
-		Invite   string `json:"invite"`
-		RealName string `json:"realName"`
+		IDToken string `json:"idToken"`
+		signup
 	}
 	if !decode(w, r, &in) {
 		return
@@ -349,7 +391,7 @@ func telegramLogin(w http.ResponseWriter, r *http.Request) {
 		first = c.Name
 	}
 	id, _ := c.ID.Int64()
-	finishLogin(w, "tg_id", tgData{id, first, c.FamilyName, c.Username, c.Picture}, in.Invite, in.RealName)
+	finishLogin(w, "tg_id", tgData{id, first, c.FamilyName, c.Username, c.Picture}, in.signup)
 }
 
 // Только для локальной разработки (DEV_LOGIN=1): вход без Telegram.
@@ -362,8 +404,7 @@ func devLogin(w http.ResponseWriter, r *http.Request) {
 		TgID     int64  `json:"tgId"`
 		Username string `json:"username"`
 		Name     string `json:"name"`
-		Invite   string `json:"invite"`
-		RealName string `json:"realName"`
+		signup
 	}
 	if !decode(w, r, &in) {
 		return
@@ -380,7 +421,7 @@ func devLogin(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = nick
 	}
-	finishLogin(w, "tg_id", tgData{ID: in.TgID, FirstName: name, Username: nick}, in.Invite, in.RealName)
+	finishLogin(w, "tg_id", tgData{ID: in.TgID, FirstName: name, Username: nick}, in.signup)
 }
 
 // ---------- Telegram: id_token (OpenID Connect) ----------

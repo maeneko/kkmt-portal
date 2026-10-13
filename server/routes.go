@@ -66,6 +66,18 @@ func authRoutes(m *http.ServeMux) {
 		"DELETE /api/me/social/{kind}",
 		authed(unlinkSocial),
 	)
+	m.HandleFunc(
+		"GET /api/roster/free",
+		authed(freeNames),
+	)
+	m.HandleFunc(
+		"POST /api/me/roster",
+		authed(claimName),
+	)
+	m.HandleFunc(
+		"PUT /api/users/{id}/roster",
+		moderator(assignName),
+	)
 }
 
 func userRoutes(m *http.ServeMux) {
@@ -215,6 +227,23 @@ func adminRoutes(m *http.ServeMux) {
 	m.HandleFunc(
 		"DELETE /api/admin/invites/{code}",
 		admin(deleteInvite),
+	)
+
+	m.HandleFunc(
+		"GET /api/admin/roster",
+		admin(listRoster),
+	)
+	m.HandleFunc(
+		"PUT /api/admin/roster",
+		admin(addRoster),
+	)
+	m.HandleFunc(
+		"DELETE /api/admin/roster/{id}",
+		admin(deleteRoster),
+	)
+	m.HandleFunc(
+		"POST /api/admin/roster/{id}/release",
+		admin(releaseRoster),
 	)
 
 	m.HandleFunc(

@@ -59,6 +59,43 @@ function Invites({ showMsg }: Pick<PageProps, 'showMsg'>) {
     );
 }
 
+interface RosterItem { id: number; name: string; user_id?: number; holder?: string }
+
+// Список группы: из него человек выбирает своё «Фамилия Имя» при регистрации. Пока список пуст, имя вводят руками.
+function Roster({ showMsg }: Pick<PageProps, 'showMsg'>) {
+    const [list, setList] = useState<RosterItem[]>([]);
+    const [text, setText] = useState('');
+    const load = useCallback(() => api<RosterItem[]>('GET', '/admin/roster').then(setList).catch(e => showMsg(errText(e))), [showMsg]);
+    useEffect(() => { load(); }, [load]);
+
+    const add = async () => {
+        try { const { added } = await api<{ added: number }>('PUT', '/admin/roster', { names: text }); setText(''); await load(); showMsg(added ? `Добавлено: ${added}` : 'Новых имён нет'); }
+        catch (e) { showMsg(errText(e)); }
+    };
+    const act = async (method: string, path: string) => { try { await api(method, path); await load(); } catch (e) { showMsg(errText(e)); } };
+    const taken = list.filter(i => i.user_id).length;
+
+    return (
+        <section className="card">
+            <span className="card-title">Список группы · выбрано {taken} из {list.length}</span>
+            <textarea className="field" rows={5} placeholder={'Иванов Иван\nПетрова Мария\n…'} value={text} onChange={e => setText(e.target.value)} aria-label="Имена, по одному в строке" />
+            <button className="btn btn--primary" disabled={!text.trim()} onClick={add}><IcoPlus /> Добавить</button>
+            <p className="hint">По одному «Фамилия Имя» в строке. Участники выбирают себя из списка при регистрации, а уже зарегистрированным откроется обязательный выбор. Выбранное имя занято, изменить его может только староста или админ.</p>
+            {list.length === 0 && <p className="muted">Список пуст: имя вводят вручную</p>}
+            {list.map(i => (
+                <div className="invite-row" key={i.id}>
+                    <div className="grow nm" style={{ fontWeight: 500 }}>{i.name}</div>
+                    {i.user_id
+                        ? <><span className="chip chip--online"><span className="chip-dot" /> {clip(i.holder ?? 'выбрано')}</span>
+                            <button className="btn btn--tonal btn--sm" onClick={() => act('POST', `/admin/roster/${i.id}/release`)}>Освободить</button></>
+                        : <span className="chip">Свободно</span>}
+                    <button className="btn-icon btn-icon--danger" aria-label="Удалить из списка" onClick={() => act('DELETE', `/admin/roster/${i.id}`)}><IcoTrash /></button>
+                </div>
+            ))}
+        </section>
+    );
+}
+
 function Members({ me, showMsg }: Pick<PageProps, 'me' | 'showMsg'>) {
     const [ask, dialog] = useConfirm();
     const [list, setList] = useState<Member[]>([]);
@@ -103,8 +140,8 @@ function Members({ me, showMsg }: Pick<PageProps, 'me' | 'showMsg'>) {
 }
 
 export default function Admin({ me, showMsg }: PageProps) {
-    const [section, setSection] = useState<'invites' | 'members'>('invites');
-    const SECTIONS = [['invites', 'Ключи'], ['members', 'Участники']] as const;
+    const [section, setSection] = useState<'invites' | 'roster' | 'members'>('invites');
+    const SECTIONS = [['invites', 'Ключи'], ['roster', 'Список'], ['members', 'Участники']] as const;
     return (
         <>
             <div className="seg seg--full" role="tablist">
@@ -113,6 +150,7 @@ export default function Admin({ me, showMsg }: PageProps) {
                 ))}
             </div>
             {section === 'invites' && <Invites showMsg={showMsg} />}
+            {section === 'roster' && <Roster showMsg={showMsg} />}
             {section === 'members' && <Members me={me} showMsg={showMsg} />}
         </>
     );

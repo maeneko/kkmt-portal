@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ROLE_LABEL, api, cached, displayName, errText, NICK_MAX, type PageProps, type Role } from '../lib/api';
+import { ROLE_LABEL, api, cached, displayName, errText, isModerator, NICK_MAX, type PageProps, type Role } from '../lib/api';
 import Avatar from './Avatar';
 import { useConfirm } from './Dialog';
+import RosterPicker, { type RosterName } from './RosterPicker';
 import { IcoEdit, IcoTelegram, IcoVK } from './icons';
 import './ProfileView.css';
 
@@ -21,8 +22,12 @@ function Social({ icon, name, handle, href, action }: { icon: ReactNode; name: s
 
 export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, 'me' | 'reloadMe' | 'showMsg'>) {
     const [name, setName] = useState(me.display_name ?? '');
-    const [realName, setRealName] = useState(me.real_name ?? '');
     const [saving, setSaving] = useState(false);
+    // «Фамилию и имя» выбирают из списка группы при регистрации; другое имя из списка назначает только староста и выше (карандаш в списке одногруппников)
+    const mod = isModerator(me);
+    const [pickFor, setPickFor] = useState<Member | null>(null);
+    const [free, setFree] = useState<RosterName[] | null>(null);
+    const [pickId, setPickId] = useState(0);
     // форма редактирования раскрывается по кнопке «Редактировать» в карточке профиля
     const [editing, setEditing] = useState(false);
     const [members, setMembers] = useState<Member[]>(() => cached<Member[]>('/users') ?? []);
@@ -31,7 +36,7 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
 
     const save = async () => {
         setSaving(true);
-        try { await api('PATCH', '/me', { display_name: name, real_name: realName }); await reloadMe(); setEditing(false); showMsg('Профиль сохранён'); }
+        try { await api('PATCH', '/me', { display_name: name }); await reloadMe(); setEditing(false); showMsg('Профиль сохранён'); }
         catch (e) { showMsg(errText(e)); } finally { setSaving(false); }
     };
     const [ask, dialog] = useConfirm();
@@ -39,9 +44,20 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
         if (!await ask({ title: `Отвязать ${title}?`, body: 'Входить через него больше не получится.', confirm: 'Отвязать', danger: true })) return;
         try { await api('DELETE', `/me/social/${kind}`); await reloadMe(); showMsg(`${title} отвязан`); } catch (e) { showMsg(errText(e)); }
     };
+    const openPick = (m: Member) => {
+        setPickFor(m); setPickId(0); setFree(null);
+        api<RosterName[]>('GET', '/roster/free').then(setFree).catch(e => { showMsg(errText(e)); setPickFor(null); });
+    };
+    const assign = async () => {
+        if (!pickFor) return;
+        try {
+            await api('PUT', `/users/${pickFor.id}/roster`, { id: pickId });
+            setPickFor(null); setMembers(await api<Member[]>('GET', '/users')); await reloadMe(); showMsg('Имя изменено');
+        } catch (e) { showMsg(errText(e)); openPick(pickFor); } // имя могли занять раньше
+    };
     const shown = displayName(me);
-    const dirty = name !== (me.display_name ?? '') || realName !== (me.real_name ?? '');
-    const cancel = () => { setName(me.display_name ?? ''); setRealName(me.real_name ?? ''); setEditing(false); };
+    const dirty = name !== (me.display_name ?? '');
+    const cancel = () => { setName(me.display_name ?? ''); setEditing(false); };
 
     return (
         <>
@@ -69,10 +85,10 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
                     <label className="stack" style={{ gap: 6 }}><span className="label">Отображаемое имя</span>
                         <input className="field" maxLength={NICK_MAX} placeholder={[me.first_name, me.last_name].filter(Boolean).join(' ')} value={name} onChange={e => setName(e.target.value)} />
                     </label>
-                    <label className="stack" style={{ gap: 6 }}><span className="label">Фамилия и имя</span>
-                        <input className="field" maxLength={64} placeholder="Иванов Иван" autoComplete="name" value={realName} onChange={e => setRealName(e.target.value)} />
-                        <span className="hint">Видят только модераторы и админы</span>
-                    </label>
+                    <div className="stack" style={{ gap: 4 }}><span className="label">Фамилия и имя</span>
+                        <span>{me.real_name || '—'}</span>
+                        <span className="hint">Выбрано из списка группы, другое назначает староста или админ</span>
+                    </div>
                     <div className="stack" style={{ gap: 10, margin: '8px 0' }}>
                         <span className="label">Привязанные соцсети</span>
                         <Social icon={<IcoTelegram />} name="Telegram" handle={me.tg_linked ? (me.username ? `@${me.username}` : 'привязан') : undefined}
@@ -102,12 +118,32 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
                                 <div className="nm" style={{ fontWeight: 500 }}>{displayName(m)}</div>
                                 <div className="hint nm">{[m.real_name, m.username && `@${m.username}`].filter(Boolean).join(' · ')}</div>
                             </div>
+                            {mod && <button className="btn-icon btn-icon--neutral" aria-label="Выбрать другое имя из списка" onClick={() => openPick(m)}><IcoEdit /></button>}
                             {m.role !== 'student' && <span className="chip chip--primary">{ROLE_LABEL[m.role]}</span>}
                         </div>
                     ))}
                 </div>
             </div>
             {dialog}
+            {pickFor && (
+                <div className="scrim-dialog" onMouseDown={e => { if (e.target === e.currentTarget) setPickFor(null); }}>
+                    <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="pick-title">
+                        <h2 className="dialog-title" id="pick-title">Имя для {displayName(pickFor)}</h2>
+                        <div className="dialog-body">
+                            {free === null ? <p className="hint">Загрузка…</p> : free.length === 0 ? <p>Свободных имён в списке группы нет.</p> : (
+                                <>
+                                    {pickFor.real_name && <p>Сейчас: {pickFor.real_name}. Оно освободится и станет доступно другим.</p>}
+                                    <RosterPicker names={free} value={pickId} onChange={setPickId} />
+                                </>
+                            )}
+                        </div>
+                        <div className="dialog-actions">
+                            <button className="btn btn--tonal" onClick={() => setPickFor(null)}>Отмена</button>
+                            <button className="btn btn--primary" disabled={!pickId} onClick={assign}>Назначить</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

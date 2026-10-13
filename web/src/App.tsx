@@ -7,6 +7,7 @@ import BottomNav from './components/BottomNav';
 import NavDrawer from './components/NavDrawer';
 import ProfileMenu from './components/ProfileMenu';
 import Login from './components/Login';
+import RosterGate from './components/RosterGate';
 import LessonDetails from './tabs/schedule/LessonDetails';
 import { TABS } from './tabs';
 
@@ -193,6 +194,7 @@ export default function App() {
                     {lesson && <LessonDetails sel={lesson} closing={lessonClosing} me={view ?? me} showMsg={showMsg} onClose={closeLesson} onChanged={() => setLessonRev(r => r + 1)} />}
                 </>
             )}
+            {me?.need_roster && <RosterGate reloadMe={reloadMe} onLogout={logout} />}
             {msg && <div className="snackbar" role="status">{msg}</div>}
         </div>
     );
