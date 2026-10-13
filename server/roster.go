@@ -16,6 +16,8 @@ type RosterEntry struct {
 	Name   string  `db:"name" json:"name"`
 	UserID *int64  `db:"user_id" json:"user_id,omitempty"`
 	Holder *string `db:"holder" json:"holder,omitempty"`
+	Nick   *string `db:"nick" json:"nick,omitempty"`   // @ник из Telegram, если человек зарегистрирован
+	Photo  *string `db:"photo" json:"photo,omitempty"` // его фото
 }
 
 // cleanName приводит «Фамилия  Имя» к одному пробелу; ok — есть фамилия и имя.
@@ -115,7 +117,7 @@ func assignName(w http.ResponseWriter, r *http.Request) {
 // listRoster — весь список группы с тем, кто какое имя выбрал (админка).
 func listRoster(w http.ResponseWriter, r *http.Request) {
 	list := []RosterEntry{}
-	err := db.Select(&list, `SELECT r.id, r.name, r.user_id, `+displayNameSQL("u.")+` AS holder
+	err := db.Select(&list, `SELECT r.id, r.name, r.user_id, `+displayNameSQL("u.")+` AS holder, u.username AS nick, u.photo_url AS photo
 		FROM roster r LEFT JOIN users u ON u.id = r.user_id ORDER BY r.name`)
 	if !serverErr(w, err) {
 		writeJSON(w, 200, list)

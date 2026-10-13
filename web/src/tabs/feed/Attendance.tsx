@@ -8,7 +8,7 @@ import { LessonSheet } from '../schedule/LessonDetails';
 
 interface Sched { lessons: Lesson[]; changes?: LessonChange[]; times: PairTime[]; satTimes?: PairTime[]; semesterStart: string | null }
 // человек из списка группы; user_id есть, если он уже зарегистрировался
-interface Member { id: number; name: string; user_id?: number }
+interface Member { id: number; name: string; user_id?: number; holder?: string; nick?: string; photo?: string }
 interface Mark { pair_no: number; roster_id: number; present: boolean }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -134,10 +134,10 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
                 <div className="att-list">
                     {members.map(m => (
                         <label className="att-row" key={m.id}>
-                            <Avatar name={m.name} photo={null} />
+                            <Avatar name={m.name} photo={m.photo ?? null} />
                             <div className="grow">
                                 <div className="nm" style={{ fontWeight: 500 }}>{m.name}</div>
-                                {!m.user_id && <div className="hint nm">Ещё не зарегистрирован</div>}
+                                <div className="hint nm">{m.user_id ? (m.nick ? `@${m.nick}` : m.holder) : 'Ещё не зарегистрирован'}</div>
                             </div>
                             <Checkbox checked={!absent.has(m.id)} onChange={() => toggle(m.id)} aria-label={`${m.name}: присутствует`} />
                         </label>

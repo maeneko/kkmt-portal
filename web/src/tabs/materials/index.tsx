@@ -87,7 +87,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
     };
     const isDone = (i: HwItem) => done.has(slotKey(i));
     const load = useCallback(() => {
-        type Sched = { lessons: Lesson[]; semesterStart: string | null };
+        type Sched = { lessons: Lesson[]; changes?: { subject: string }[]; semesterStart: string | null };
         const hwUrl = (sched: Sched) => {
             const now = new Date();
             const from = sched.semesterStart ?? iso(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
@@ -111,6 +111,10 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                 s.files += it.files.length;
                 map.set(name, s);
             }
+            // предметы расписания видны сразу, даже если по ним ещё нет ни заданий, ни файлов (например, только что добавленный предмет)
+            for (const name of new Set([...sched.lessons.map(l => l.subject), ...(sched.changes ?? []).map(c => c.subject)])) {
+                if (name && !map.has(name)) map.set(name, { name, items: [], files: 0 });
+            }
             for (const s of map.values()) s.items.sort((a, b) => b.date.localeCompare(a.date) || a.pair_no - b.pair_no);
             setSubjects([...map.values()]);
         };
@@ -127,7 +131,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
     if (!subjects) return null;
     // «по дате» — предметы с самыми свежими материалами первыми; материалы внутри предмета всегда от новых к старым
     const shown = subjects.filter(s => s.name.toLowerCase().includes(query.trim().toLowerCase()))
-        .sort((a, b) => (sort === 'date' ? b.items[0].date.localeCompare(a.items[0].date) : 0) || a.name.localeCompare(b.name, 'ru'));
+        .sort((a, b) => (sort === 'date' ? (b.items[0]?.date ?? '').localeCompare(a.items[0]?.date ?? '') : 0) || a.name.localeCompare(b.name, 'ru'));
     const summary = (s: Subject) => {
         const hw = s.items.filter(i => i.body).length;
         // дни, где есть что делать (задание или файлы), и сколько из них отмечено сделанными
@@ -243,6 +247,7 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                     <span className="tree-sub">{summary(page)}</span>
                 </div>
             </div>
+            {page.items.length === 0 && <p className="hw-empty">Заданий и файлов пока нет: они появятся здесь, когда их добавят на паре этого предмета в расписании.</p>}
             <div className="mat-days">
                 {page.items.map(i => (
                     <section key={`${i.date}|${i.pair_no}`} className={`card mat-item${isDone(i) ? ' mat-item--done' : ''}`}>
@@ -281,8 +286,8 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                         <button key={s.name} className="card mat-card" onClick={() => { setCur(s.name); window.scrollTo(0, 0); }}>
                             <span className="mat-icon"><IcoFolder /></span>
                             <span className="mat-card-title">{s.name}</span>
-                            <span className="tree-sub mat-sub--bottom">{summary(s)}</span>
-                            <span className="tree-sub">Последнее: {fmtDate(s.items[0].date)}</span>
+                            <span className="tree-sub mat-sub--bottom">{summary(s) || 'Пока пусто'}</span>
+                            {s.items.length > 0 && <span className="tree-sub">Последнее: {fmtDate(s.items[0].date)}</span>}
                         </button>
                     ))}
                 </div>
@@ -312,11 +317,12 @@ export default function Materials({ me, showMsg, goTo }: PageProps) {
                                     <span className="mat-icon"><IcoFolder /></span>
                                     <span className="grow">
                                         <span className="tree-title">{s.name}</span>
-                                        <span className="tree-sub">{summary(s)}</span>
+                                        <span className="tree-sub">{summary(s) || 'Пока пусто'}</span>
                                     </span>
                                 </button>
                                 {so && (
                                     <ul className="tree-children">
+                                        {s.items.length === 0 && <li className="hw-empty tree-leaf">Заданий и файлов пока нет</li>}
                                         {s.items.map(i => {
                                             const k = `${s.name}|${i.date}|${i.pair_no}`, d = open.has(k);
                                             return (
