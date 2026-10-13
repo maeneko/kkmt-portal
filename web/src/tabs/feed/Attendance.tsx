@@ -22,7 +22,7 @@ const subjectOf = (s: Sched, date: string, n: number) => {
 const timeOf = (s: Sched, weekday: number, n: number) => (weekday === 6 && s.satTimes?.length ? s.satTimes : s.times).find(x => x.pair_no === n);
 const pairsOf = (s: Sched, date: string) => Array.from({ length: 12 }, (_, i) => i + 1).filter(n => subjectOf(s, date, n));
 
-// Кнопка «Посещаемость» в ленте (для старосты и выше): отмечаем, кто был на паре сегодня. По умолчанию присутствуют все.
+// Кнопка «Посещаемость» в ленте (для старосты и выше): отмечаем, кто был на паре сегодня. По умолчанию не выбран никто.
 export default function Attendance({ showMsg }: { showMsg: (t: string) => void }) {
     // ПК: панель почти на всю страницу, телефон: высокая шторка снизу (как подробности пары)
     const [open, setOpen] = useState(false);
@@ -32,7 +32,8 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
     const [members, setMembers] = useState<Member[]>([]);
     const [marks, setMarks] = useState<Mark[]>([]);
     const [pair, setPair] = useState(0);
-    const [absent, setAbsent] = useState<Set<number>>(new Set());
+    // кто на паре: по умолчанию никто, староста отмечает присутствующих (если пара уже отмечена — как было сохранено)
+    const [present, setPresent] = useState<Set<number>>(new Set());
     // отправка: список сворачивается, кнопка превращается в поле со «крутилкой», потом «Отправлено» и панель закрывается
     const [phase, setPhase] = useState<'idle' | 'sending' | 'done'>('idle');
     const [error, setError] = useState(''); // «некому отправить» и сбой доставки: в шторке snackbar закрыт затемнением, поэтому показываем в самом окне
@@ -52,8 +53,8 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
     // пара, которая идёт прямо сейчас
     const nowPair = sched ? pairs.find(n => { const t = timeOf(sched, weekday, n); return t && toMin(t.start_time) <= minutes && minutes < toMin(t.end_time); }) : undefined;
 
-    // отметки пары → множество отсутствующих (без отметки считается «был»)
-    const pick = (n: number, all: Mark[]) => { setPair(n); setAbsent(new Set(all.filter(m => m.pair_no === n && !m.present).map(m => m.roster_id))); };
+    // отметки пары → множество присутствующих (без отметок не выбран никто)
+    const pick = (n: number, all: Mark[]) => { setPair(n); setPresent(new Set(all.filter(m => m.pair_no === n && m.present).map(m => m.roster_id))); };
 
     const close = () => { setClosing(true); window.setTimeout(() => { setOpen(false); setClosing(false); }, 260); };
     const show = async () => {
@@ -83,11 +84,11 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
         return () => document.removeEventListener('mousedown', h);
     }, [menu]);
 
-    const toggle = (id: number) => setAbsent(a => { const n = new Set(a); if (!n.delete(id)) n.add(id); return n; });
+    const toggle = (id: number) => setPresent(a => { const n = new Set(a); if (!n.delete(id)) n.add(id); return n; });
     const save = async () => {
         setPhase('sending'); setError('');
         try {
-            const list = members.map(m => ({ roster_id: m.id, present: !absent.has(m.id) }));
+            const list = members.map(m => ({ roster_id: m.id, present: present.has(m.id) }));
             // не короче 900 мс, чтобы отправка читалась, а не мигала
             await Promise.all([api('PUT', '/attendance', { date, pair_no: pair, subject: sched ? subjectOf(sched, date, pair) : '', marks: list }), new Promise(r => window.setTimeout(r, 900))]);
             setMarks(all => [...all.filter(m => m.pair_no !== pair), ...list.map(b => ({ ...b, pair_no: pair }))]);
@@ -97,7 +98,7 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
     };
 
     // доля присутствующих — полоска сверху
-    const here = members.length - absent.size;
+    const here = present.size;
     const bar = sched && pairs.length > 0 && (
         <div className="att-top">
             <div className="att-count"><span>Присутствуют</span><b>{here} из {members.length}</b></div>
@@ -139,7 +140,7 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
                                 <div className="nm" style={{ fontWeight: 500 }}>{m.name}</div>
                                 <div className="hint nm">{m.user_id ? (m.nick ? `@${m.nick}` : m.holder) : 'Ещё не зарегистрирован'}</div>
                             </div>
-                            <Checkbox checked={!absent.has(m.id)} onChange={() => toggle(m.id)} aria-label={`${m.name}: присутствует`} />
+                            <Checkbox checked={present.has(m.id)} onChange={() => toggle(m.id)} aria-label={`${m.name}: присутствует`} />
                         </label>
                     ))}
                 </div>
