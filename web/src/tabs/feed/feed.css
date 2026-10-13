@@ -127,18 +127,38 @@
 
 /* Отметка посещаемости: на ПК панель почти на всю страницу правее навигации (страницу не сдвигает), на телефоне — высокая шторка */
 .att-page {
-    position: fixed; z-index: 90; top: 76px; right: 16px; bottom: 16px; left: calc(var(--nav-w, 0px) + 16px); overflow-y: auto; padding: 16px 24px;
+    position: fixed; z-index: 90; top: 76px; right: 16px; bottom: 16px; left: calc(var(--nav-w, 0px) + 16px); overflow-y: auto; padding: 0 24px 16px;
     background: var(--surface-bright); border: 1px solid var(--outline-variant); border-radius: var(--r-l); box-shadow: var(--elev-1); animation: side-in 220ms var(--ease-in);
 }
 /* отправка, как лист Apple Pay: окно целиком опускается — верхний край съезжает вниз, остаётся компактная карточка у нижнего края; потом уезжает вниз совсем */
 .att-page { transition: top 520ms var(--ease-std); }
 .att-page--busy { top: calc(100dvh - 318px); }
+.att-page .lesson-pop-head { padding-top: 16px; } /* верхний отступ панели у заголовка, чтобы плавающая полоска прилипала к самому краю */
 .att-page--out { animation: att-page-out 280ms var(--ease-out) forwards; pointer-events: none; }
 @keyframes att-page-out { to { opacity: 0; transform: translateY(56px); } }
-.scrim-sheet:has(.att) .sheet { height: calc(100dvh - 24px); max-height: none; transition: height 520ms var(--ease-std), transform 350ms var(--ease-in); }
+.scrim-sheet:has(.att) .sheet { height: calc(100dvh - 72px - env(safe-area-inset-top)); /* сверху остаётся зазор ~60px: шторка не упирается в адресную строку */ max-height: none; transition: height 520ms var(--ease-std), transform 350ms var(--ease-in); }
 .scrim-sheet:has(.att--busy) .sheet { height: 328px; }
 .scrim-sheet:has(.att) .sheet--out { transition: transform 260ms var(--ease-out), height 520ms var(--ease-std); }
-.att-top { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+/* Полоска «N из M» прилипает к верху. Отлипает как верхняя панель в Android: --p (0…1) растёт с прокруткой, фон и тень проявляются,
+   содержимое отъезжает от краёв. --p зарегистрирована и плавно догоняет значение — отделяется неохотно, с инерцией.
+   Вертикальные размеры не меняются, список не подпрыгивает. */
+@property --p { syntax: '<number>'; inherits: true; initial-value: 0; }
+.att-sentinel { height: 1px; margin-bottom: -1px; }
+.att-top {
+    --p: 0; position: sticky; top: 8px; z-index: 4; display: flex; flex-direction: column; gap: 8px; margin: 4px 0;
+    padding: 8px calc(var(--p) * 20px) 12px; transform: translateY(calc(var(--p) * 2px));
+    transition: --p 380ms cubic-bezier(0.2, 0, 0, 1);
+}
+.att-top { --base: var(--surface-bright); --cap: var(--surface-container); } /* цвет панели и цвет капсулы */
+.sheet .att-top { --base: var(--surface-container); --cap: var(--surface-bright); } /* у шторки фон другой, поэтому и пара цветов другая */
+/* фон всегда непрозрачный (от цвета панели к цвету капсулы), иначе уходящий под полоску список просвечивает; тень проявляется с --p */
+.att-top::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 28px; pointer-events: none;
+    background: color-mix(in srgb, var(--cap) calc(var(--p) * 100%), var(--base));
+    box-shadow: 0 calc(var(--p) * 2px) calc(var(--p) * 10px) rgb(0 0 0 / calc(var(--p) * 0.28));
+}
+/* полоска над капсулой (прилипает с отступом 8px): закрыта цветом панели, чтобы там не мелькали имена */
+.att-top::after { content: ''; position: absolute; left: 0; right: 0; top: -8px; height: 8px; z-index: -1; background: var(--base); pointer-events: none; }
 .att-count { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; font-variant-numeric: tabular-nums; }
 .att-count b { font-weight: 500; }
 .att-progress { height: 10px; border-radius: 5px; background: color-mix(in srgb, var(--on-surface) 14%, transparent); overflow: hidden; }

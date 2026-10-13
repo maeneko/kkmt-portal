@@ -41,6 +41,9 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
     const [menu, setMenu] = useState(false);
     const [menuOut, setMenuOut] = useState(false);
     const pairBox = useRef<HTMLDivElement>(null);
+    // полоска «N из M» прилипает к верху; чем дальше прокручен список, тем сильнее она отделяется и становится капсулой (--p от 0 до 1)
+    const sentinel = useRef<HTMLDivElement>(null);
+    const barRef = useRef<HTMLDivElement>(null);
     // закрытие с анимацией: меню сворачивается, потом размонтируется
     const closeMenu = () => { setMenuOut(true); window.setTimeout(() => { setMenu(false); setMenuOut(false); }, 140); };
 
@@ -76,6 +79,23 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
         document.addEventListener('keydown', h);
         return () => document.removeEventListener('keydown', h);
     }, [open, pop, menu]);
+    // отлипание привязано к прокрутке: метка над полоской уходит вверх, прогресс отлипания растёт на каждые 56 px после прилипания;
+    // сама полоска догоняет значение с задержкой (transition у --p в CSS), поэтому отделяется «нехотя»
+    const hasBar = !!sched && pairs.length > 0;
+    useEffect(() => {
+        const mark = sentinel.current, bar = barRef.current, root = mark?.closest('.att-page, .sheet-body');
+        if (!open || !mark || !bar || !root) return;
+        let raf = 0;
+        const update = () => {
+            raf = 0;
+            const d = root.getBoundingClientRect().top - mark.getBoundingClientRect().top; // на сколько прокручено мимо метки
+            bar.style.setProperty('--p', String(Math.min(1, Math.max(0, (d - 4) / 56))));
+        };
+        const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
+        update();
+        root.addEventListener('scroll', onScroll, { passive: true });
+        return () => { root.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
+    }, [open, pop, hasBar]);
     // нажатие вне списка пар закрывает его
     useEffect(() => {
         if (!menu) return;
@@ -100,12 +120,15 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
     // доля присутствующих — полоска сверху
     const here = present.size;
     const bar = sched && pairs.length > 0 && (
-        <div className="att-top">
+        <>
+            <div className="att-sentinel" ref={sentinel} />
+            <div className="att-top" ref={barRef}>
             <div className="att-count"><span>Присутствуют</span><b>{here} из {members.length}</b></div>
             <div className="att-progress" role="progressbar" aria-label="Присутствуют" aria-valuemin={0} aria-valuemax={members.length} aria-valuenow={here}>
                 <i style={{ width: `${members.length ? here / members.length * 100 : 0}%` }} />
             </div>
-        </div>
+            </div>
+        </>
     );
     const body = !sched ? <p className="hint">Загрузка…</p> : members.length === 0 ? <p className="hint">Список группы пуст: админ добавляет имена в админке, вкладка «Список»</p> : pairs.length === 0 ? <p className="hint">Сегодня пар нет</p> : (
         <div className={`att${phase === 'idle' ? '' : ' att--busy'}`}>
