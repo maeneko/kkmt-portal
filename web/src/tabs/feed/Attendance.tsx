@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, displayName, errText } from '../../lib/api';
+import { api, errText } from '../../lib/api';
 import Avatar from '../../components/Avatar';
 import Checkbox from '../../components/Checkbox';
 import { IcoCheck, IcoUsers } from '../../components/icons';
@@ -7,8 +7,9 @@ import { subjectAt, type Lesson, type LessonChange, type PairTime } from '../sch
 import { LessonSheet } from '../schedule/LessonDetails';
 
 interface Sched { lessons: Lesson[]; changes?: LessonChange[]; times: PairTime[]; satTimes?: PairTime[]; semesterStart: string | null }
-interface Member { id: number; display_name: string | null; first_name: string; last_name: string | null; username: string | null; real_name?: string | null; photo_url: string | null }
-interface Mark { pair_no: number; user_id: number; present: boolean }
+// человек из списка группы; user_id есть, если он уже зарегистрировался
+interface Member { id: number; name: string; user_id?: number }
+interface Mark { pair_no: number; roster_id: number; present: boolean }
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -34,6 +35,7 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
     const [absent, setAbsent] = useState<Set<number>>(new Set());
     // отправка: список сворачивается, кнопка превращается в поле со «крутилкой», потом «Отправлено» и панель закрывается
     const [phase, setPhase] = useState<'idle' | 'sending' | 'done'>('idle');
+    const [error, setError] = useState(''); // «некому отправить» и сбой доставки: в шторке snackbar закрыт затемнением, поэтому показываем в самом окне
     // выпадающий список пар
     const [menu, setMenu] = useState(false);
     const [menuOut, setMenuOut] = useState(false);
@@ -51,15 +53,15 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
     const nowPair = sched ? pairs.find(n => { const t = timeOf(sched, weekday, n); return t && toMin(t.start_time) <= minutes && minutes < toMin(t.end_time); }) : undefined;
 
     // отметки пары → множество отсутствующих (без отметки считается «был»)
-    const pick = (n: number, all: Mark[]) => { setPair(n); setAbsent(new Set(all.filter(m => m.pair_no === n && !m.present).map(m => m.user_id))); };
+    const pick = (n: number, all: Mark[]) => { setPair(n); setAbsent(new Set(all.filter(m => m.pair_no === n && !m.present).map(m => m.roster_id))); };
 
     const close = () => { setClosing(true); window.setTimeout(() => { setOpen(false); setClosing(false); }, 260); };
     const show = async () => {
         setPop(window.matchMedia('(min-width: 641px)').matches);
-        setClosing(false); setPhase('idle'); setOpen(true);
+        setClosing(false); setPhase('idle'); setError(''); setOpen(true);
         try {
-            const [s, u, m] = await Promise.all([api<Sched>('GET', '/schedule'), api<Member[]>('GET', '/users'), api<Mark[]>('GET', `/attendance?date=${date}`)]);
-            setSched(s); setMembers(u); setMarks(m);
+            const [s, u, m] = await Promise.all([api<Sched>('GET', '/schedule'), api<Member[]>('GET', '/roster'), api<Mark[]>('GET', `/attendance?date=${date}`)]);
+            setSched(s); setMembers([...u].sort((x, y) => x.name.localeCompare(y.name, 'ru'))); setMarks(m); // по алфавиту (фамилия первой)
             // сначала пара, которая идёт сейчас или ещё впереди; если все закончились — последняя
             const today = pairsOf(s, date);
             const cur = today.find(n => { const t = timeOf(s, weekday, n); return t && toMin(t.end_time) > minutes; }) ?? today[today.length - 1] ?? 0;
@@ -83,15 +85,15 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
 
     const toggle = (id: number) => setAbsent(a => { const n = new Set(a); if (!n.delete(id)) n.add(id); return n; });
     const save = async () => {
-        setPhase('sending');
+        setPhase('sending'); setError('');
         try {
-            const list = members.map(m => ({ user_id: m.id, present: !absent.has(m.id) }));
+            const list = members.map(m => ({ roster_id: m.id, present: !absent.has(m.id) }));
             // не короче 900 мс, чтобы отправка читалась, а не мигала
             await Promise.all([api('PUT', '/attendance', { date, pair_no: pair, subject: sched ? subjectOf(sched, date, pair) : '', marks: list }), new Promise(r => window.setTimeout(r, 900))]);
             setMarks(all => [...all.filter(m => m.pair_no !== pair), ...list.map(b => ({ ...b, pair_no: pair }))]);
             setPhase('done');
             window.setTimeout(() => { close(); showMsg('Посещаемость отправлена'); }, 800);
-        } catch (e) { showMsg(errText(e)); setPhase('idle'); }
+        } catch (e) { setError(errText(e)); setPhase('idle'); }
     };
 
     // доля присутствующих — полоска сверху
@@ -104,7 +106,7 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
             </div>
         </div>
     );
-    const body = !sched ? <p className="hint">Загрузка…</p> : pairs.length === 0 ? <p className="hint">Сегодня пар нет</p> : (
+    const body = !sched ? <p className="hint">Загрузка…</p> : members.length === 0 ? <p className="hint">Список группы пуст: админ добавляет имена в админке, вкладка «Список»</p> : pairs.length === 0 ? <p className="hint">Сегодня пар нет</p> : (
         <div className={`att${phase === 'idle' ? '' : ' att--busy'}`}>
             <div className="tf" ref={pairBox}>
                 <button type="button" className="tf-in tf-btn" disabled={phase !== 'idle'} aria-haspopup="listbox" aria-expanded={menu} onClick={() => (menu && !menuOut ? closeMenu() : setMenu(true))}>
@@ -132,16 +134,17 @@ export default function Attendance({ showMsg }: { showMsg: (t: string) => void }
                 <div className="att-list">
                     {members.map(m => (
                         <label className="att-row" key={m.id}>
-                            <Avatar name={displayName(m)} photo={m.photo_url} />
+                            <Avatar name={m.name} photo={null} />
                             <div className="grow">
-                                <div className="nm" style={{ fontWeight: 500 }}>{displayName(m)}</div>
-                                {m.real_name && <div className="hint nm">{m.real_name}</div>}
+                                <div className="nm" style={{ fontWeight: 500 }}>{m.name}</div>
+                                {!m.user_id && <div className="hint nm">Ещё не зарегистрирован</div>}
                             </div>
-                            <Checkbox checked={!absent.has(m.id)} onChange={() => toggle(m.id)} aria-label={`${displayName(m)}: присутствует`} />
+                            <Checkbox checked={!absent.has(m.id)} onChange={() => toggle(m.id)} aria-label={`${m.name}: присутствует`} />
                         </label>
                     ))}
                 </div>
             </div>
+            {error && phase === 'idle' && <p className="login-error">{error}</p>}
             {phase === 'idle'
                 ? <button className="att-go" onClick={save}>Отправить</button>
                 : <div className="att-status" role="status">{phase === 'sending' ? <><span className="att-spin" />Отправляем…</> : <><IcoCheck />Отправлено</>}</div>}

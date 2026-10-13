@@ -119,7 +119,7 @@ func chatDelete(w http.ResponseWriter, r *http.Request) {
 	if serverErr(w, err) {
 		return
 	}
-	if m.AuthorID != u.ID && u.Role == "student" {
+	if m.AuthorID != u.ID && !u.Mod() {
 		fail(w, 403, "Можно удалить только своё сообщение")
 		return
 	}

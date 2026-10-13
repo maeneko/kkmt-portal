@@ -1,12 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ROLE_LABEL, api, cached, displayName, errText, isModerator, NICK_MAX, type PageProps, type Role } from '../lib/api';
+import { ROLE_LABEL, api, cached, displayName, errText, isModerator, NICK_MAX, roleLabels, type PageProps, type Role, type Title } from '../lib/api';
 import Avatar from './Avatar';
 import { useConfirm } from './Dialog';
 import RosterPicker, { type RosterName } from './RosterPicker';
 import { IcoEdit, IcoTelegram, IcoVK } from './icons';
 import './ProfileView.css';
 
-interface Member { id: number; username: string | null; photo_url: string | null; display_name: string | null; real_name?: string | null; first_name: string; last_name: string | null; bio: string; role: Role }
+interface Member { id: number; username: string | null; photo_url: string | null; display_name: string | null; real_name?: string | null; first_name: string; last_name: string | null; bio: string; role: Role; titles?: Title[] }
 
 // Весь профиль: карточка, редактирование имени, одногруппники. Живёт в шторке профиля (ProfileMenu)
 // Привязанная соцсеть: капсула с иконкой и профилем (ссылкой, если он известен) и кнопка действия справа
@@ -70,7 +70,9 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
                             <div className="profile-name nm" title={me.display_name || undefined}>{shown}</div>
                             {me.username && <div className="muted nm">@{me.username}</div>}
                             {me.real_name && <div className="hint nm">{me.real_name}</div>}
-                            <span className={`chip ${me.role === 'student' ? '' : 'chip--primary'}`}>{ROLE_LABEL[me.role]}</span>
+                            <div className="row row--wrap" style={{ gap: 6 }}>
+                                {roleLabels(me).length ? roleLabels(me).map(l => <span key={l} className="chip chip--primary">{l}</span>) : <span className="chip">{ROLE_LABEL.student}</span>}
+                            </div>
                         </div>
                     </div>
                     <div className={`fold profile-edit-fold${editing ? '' : ' fold--open'}`}>
@@ -119,7 +121,7 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
                                 <div className="hint nm">{[m.real_name, m.username && `@${m.username}`].filter(Boolean).join(' · ')}</div>
                             </div>
                             {mod && <button className="btn-icon btn-icon--neutral" aria-label="Выбрать другое имя из списка" onClick={() => openPick(m)}><IcoEdit /></button>}
-                            {m.role !== 'student' && <span className="chip chip--primary">{ROLE_LABEL[m.role]}</span>}
+                            {roleLabels(m).map(l => <span key={l} className="chip chip--primary">{l}</span>)}
                         </div>
                     ))}
                 </div>

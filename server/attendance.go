@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,11 +17,12 @@ import (
 
 // ---------- Посещаемость ----------
 
-// Mark — отметка одного человека на одной паре.
+// Mark — отметка одного человека из списка группы на одной паре; UserID есть, если он уже зарегистрирован (только в ответе).
 type Mark struct {
-	PairNo  int   `db:"pair_no" json:"pair_no"`
-	UserID  int64 `db:"user_id" json:"user_id"`
-	Present bool  `db:"present" json:"present"`
+	PairNo   int    `db:"pair_no" json:"pair_no"`
+	RosterID int64  `db:"roster_id" json:"roster_id"`
+	UserID   *int64 `db:"user_id" json:"user_id,omitempty"`
+	Present  bool   `db:"present" json:"present"`
 }
 
 // listAttendance отдаёт отметки за дату: староста и выше видят всех, остальные — только свои.
@@ -32,13 +34,15 @@ func listAttendance(w http.ResponseWriter, r *http.Request) {
 	}
 	u := userOf(r)
 	marks := []Mark{}
-	err := db.Select(&marks, "SELECT pair_no, user_id, present FROM attendance WHERE date = ? AND (? OR user_id = ?)", date, u.Role != "student", u.ID)
+	err := db.Select(&marks, `SELECT a.pair_no, a.roster_id, r.user_id, a.present FROM attendance a JOIN roster r ON r.id = a.roster_id
+		WHERE a.date = ? AND (? OR r.user_id = ?)`, date, u.Mod(), u.ID)
 	if !serverErr(w, err) {
 		writeJSON(w, 200, marks)
 	}
 }
 
-// saveAttendance заменяет отметки пары за дату присланным списком.
+// saveAttendance заменяет отметки пары за дату присланным списком и отправляет отсутствующих кураторам в VK.
+// Некому отправить (нет куратора с привязанным VK или не настроен бот) — ошибка, отметки не сохраняются.
 func saveAttendance(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Date    string `json:"date"`
@@ -53,6 +57,18 @@ func saveAttendance(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Некорректные данные")
 		return
 	}
+	var peers []int64
+	if serverErr(w, db.Select(&peers, "SELECT vk_id FROM users WHERE FIND_IN_SET('curator', titles) AND vk_id IS NOT NULL")) {
+		return
+	}
+	if os.Getenv("VK_BOT_TOKEN") == "" {
+		fail(w, 500, "Бот VK не настроен")
+		return
+	}
+	if len(peers) == 0 {
+		fail(w, 400, "Некому отправить: нужен куратор с привязанным VK")
+		return
+	}
 	tx, err := db.Beginx()
 	if serverErr(w, err) {
 		return
@@ -63,8 +79,8 @@ func saveAttendance(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			break
 		}
-		_, err = tx.Exec("INSERT INTO attendance (date, pair_no, user_id, present, marked_by) VALUES (?, ?, ?, ?, ?)",
-			in.Date, in.PairNo, m.UserID, m.Present, userOf(r).ID)
+		_, err = tx.Exec("INSERT INTO attendance (date, pair_no, roster_id, present, marked_by) VALUES (?, ?, ?, ?, ?)",
+			in.Date, in.PairNo, m.RosterID, m.Present, userOf(r).ID)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -72,33 +88,31 @@ func saveAttendance(w http.ResponseWriter, r *http.Request) {
 	if serverErr(w, err) {
 		return
 	}
-	go notifyVK(in.Date, in.PairNo, clip(in.Subject, 200), in.Marks)
+	if err := notifyVK(peers, in.Date, in.PairNo, clip(in.Subject, 200), in.Marks); err != nil {
+		log.Println("vk бот:", err)
+		fail(w, 502, "Отметки сохранены, но куратору не отправлены: "+err.Error())
+		return
+	}
 	respondOK(w)
 }
 
-// notifyVK отправляет список отсутствующих в чат через бота сообщества VK. Нужны VK_BOT_TOKEN (ключ доступа сообщества
-// с правом «сообщения») и VK_BOT_PEER_ID (беседа: 2000000000 + номер чата; личные сообщения: id пользователя); без них не делает ничего.
-// Ошибка отправки только пишется в лог: отметка уже сохранена.
-func notifyVK(date string, pair int, subject string, marks []Mark) {
-	token, peer := os.Getenv("VK_BOT_TOKEN"), os.Getenv("VK_BOT_PEER_ID")
-	if token == "" || peer == "" {
-		return
-	}
+// notifyVK отправляет список отсутствующих кураторам (peers — их VK ID) ботом сообщества VK (ключ VK_BOT_TOKEN).
+// Успехом считается доставка хотя бы одному; иначе возвращается причина.
+func notifyVK(peers []int64, date string, pair int, subject string, marks []Mark) error {
 	var absent []int64
 	for _, m := range marks {
 		if !m.Present {
-			absent = append(absent, m.UserID)
+			absent = append(absent, m.RosterID)
 		}
 	}
 	names := []string{}
 	if len(absent) > 0 {
-		q, args, err := sqlx.In("SELECT COALESCE(NULLIF(real_name, ''), "+displayNameSQL("")+") FROM users WHERE id IN (?) ORDER BY 1", absent)
+		q, args, err := sqlx.In("SELECT name FROM roster WHERE id IN (?) ORDER BY name", absent)
 		if err == nil {
 			err = db.Select(&names, q, args...)
 		}
 		if err != nil {
-			log.Println("vk бот: имена:", err)
-			return
+			return err
 		}
 	}
 	d, _ := time.Parse("2006-01-02", date)
@@ -111,13 +125,27 @@ func notifyVK(date string, pair int, subject string, marks []Mark) {
 	} else {
 		text += fmt.Sprintf("\nОтсутствуют (%d из %d):\n%s", len(names), len(marks), strings.Join(names, "\n"))
 	}
+	var first error
+	for _, peer := range peers {
+		err := vkSend(peer, clip(text, 4000))
+		if err == nil {
+			return nil
+		}
+		if first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// vkSend пишет сообщение пользователю VK от имени сообщества.
+func vkSend(peer int64, text string) error {
 	resp, err := vkClient.PostForm("https://api.vk.com/method/messages.send", url.Values{
-		"access_token": {token}, "v": {"5.199"}, "peer_id": {peer}, "message": {clip(text, 4000)},
+		"access_token": {os.Getenv("VK_BOT_TOKEN")}, "v": {"5.199"}, "peer_id": {strconv.FormatInt(peer, 10)}, "message": {text},
 		"random_id": {strconv.FormatInt(time.Now().UnixNano()&0x7fffffff, 10)},
 	})
 	if err != nil {
-		log.Println("vk бот:", err)
-		return
+		return err
 	}
 	defer resp.Body.Close()
 	var out struct {
@@ -126,7 +154,15 @@ func notifyVK(date string, pair int, subject string, marks []Mark) {
 			Msg  string `json:"error_msg"`
 		} `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || out.Error != nil {
-		log.Println("vk бот: отправка не удалась:", err, out.Error)
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return err
+	}
+	switch {
+	case out.Error == nil:
+		return nil
+	case out.Error.Code == 901:
+		return errors.New("куратор не разрешил сообщения сообществу (нужно один раз написать боту)")
+	default:
+		return fmt.Errorf("VK: %s", out.Error.Msg)
 	}
 }

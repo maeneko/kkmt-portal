@@ -67,6 +67,10 @@ func authRoutes(m *http.ServeMux) {
 		authed(unlinkSocial),
 	)
 	m.HandleFunc(
+		"GET /api/roster",
+		moderator(listRoster),
+	)
+	m.HandleFunc(
 		"GET /api/roster/free",
 		authed(freeNames),
 	)

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, clip, displayName, errText, type PageProps, type Role } from '../../lib/api';
+import { api, clip, displayName, errText, roleLabels, TITLE_LABEL, type PageProps, type Role, type Title } from '../../lib/api';
 import Avatar from '../../components/Avatar';
 import { useConfirm } from '../../components/Dialog';
-import { IcoCopy, IcoPlus, IcoTrash } from '../../components/icons';
+import { IcoCheck, IcoCopy, IcoPlus, IcoTrash } from '../../components/icons';
 import './admin.css';
 
 interface Invite { code: string; created_at: string; max_uses: number; used_count: number; used_by: string[] }
-interface Member { id: number; username: string | null; first_name: string; last_name: string | null; display_name: string | null; real_name?: string | null; photo_url: string | null; role: Role }
+interface Member { id: number; username: string | null; first_name: string; last_name: string | null; display_name: string | null; real_name?: string | null; photo_url: string | null; role: Role; titles?: Title[] }
 
 function Invites({ showMsg }: Pick<PageProps, 'showMsg'>) {
     const [list, setList] = useState<Invite[]>([]);
@@ -102,9 +102,10 @@ function Members({ me, showMsg }: Pick<PageProps, 'me' | 'showMsg'>) {
     const load = useCallback(() => api<Member[]>('GET', '/admin/users').then(setList).catch(e => showMsg(errText(e))), [showMsg]);
     useEffect(() => { load(); }, [load]);
 
-    const setRole = async (m: Member, role: Role) => {
-        try { await api('PATCH', `/admin/users/${m.id}`, { role }); await load(); } catch (e) { showMsg(errText(e)); }
+    const patch = async (m: Member, body: { role?: Role; titles?: Title[] }) => {
+        try { await api('PATCH', `/admin/users/${m.id}`, body); await load(); } catch (e) { showMsg(errText(e)); }
     };
+    const toggleTitle = (m: Member, t: Title) => patch(m, { titles: (m.titles ?? []).includes(t) ? (m.titles ?? []).filter(x => x !== t) : [...(m.titles ?? []), t] });
     const remove = async (m: Member) => {
         if (!await ask({ title: `Удалить «${displayName(m)}»?`, body: 'Участник потеряет доступ, его посты и комментарии тоже удалятся.', confirm: 'Удалить', danger: true })) return;
         try { await api('DELETE', `/admin/users/${m.id}`); await load(); } catch (e) { showMsg(errText(e)); }
@@ -116,19 +117,31 @@ function Members({ me, showMsg }: Pick<PageProps, 'me' | 'showMsg'>) {
             {list.map(m => (
                 <div className="member-row" key={m.id}>
                     <Avatar name={displayName(m)} photo={m.photo_url} />
-                    <div className="grow"><div className="nm" style={{ fontWeight: 500 }}>{displayName(m)}</div>{(m.real_name || m.username) && <div className="hint nm">{[m.real_name, m.username && `@${m.username}`].filter(Boolean).join(' · ')}</div>}</div>
+                    <div className="grow"><div className="nm" style={{ fontWeight: 500 }}>{displayName(m)}</div>{(m.real_name || m.username) && <div className="hint nm">{[m.real_name, m.username && `@${m.username}`].filter(Boolean).join(' · ')}</div>}
+                        {me.role === 'owner' && m.role !== 'owner' && (
+                            <div className="row row--wrap" style={{ gap: 6, marginTop: 6 }}>
+                                {(Object.keys(TITLE_LABEL) as Title[]).map(t => (
+                                    <button key={t} type="button" className="fchip" aria-pressed={(m.titles ?? []).includes(t)} onClick={() => toggleTitle(m, t)}>
+                                        {(m.titles ?? []).includes(t) && <IcoCheck />}{TITLE_LABEL[t]}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                     {m.role === 'owner' ? <span className="chip chip--primary">Главный админ</span> : (
                         <>
                             {me.role === 'owner'
                                 ? (
                                     <select className="field role-select" aria-label={`Роль: ${displayName(m)}`} value={m.role}
-                                            onChange={e => setRole(m, e.target.value as Role)}>
+                                            onChange={e => patch(m, { role: e.target.value as Role })}>
                                         <option value="student">Студент</option>
                                         <option value="moderator">Модератор</option>
                                         <option value="admin">Админ</option>
                                     </select>
                                 )
-                                : <span className={`chip ${m.role === 'admin' ? 'chip--primary' : ''}`}>{m.role === 'admin' ? 'Админ' : m.role === 'moderator' ? 'Модератор' : 'Студент'}</span>}
+                                : <span className="row row--wrap" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                                    {(roleLabels(m).length ? roleLabels(m) : ['Студент']).map(l => <span key={l} className={`chip ${l === 'Студент' ? '' : 'chip--primary'}`}>{l}</span>)}
+                                </span>}
                             {(m.role !== 'admin' || me.role === 'owner') && <button className="btn-icon btn-icon--danger" aria-label="Удалить участника" onClick={() => remove(m)}><IcoTrash /></button>}
                         </>
                     )}

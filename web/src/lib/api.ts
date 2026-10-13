@@ -1,6 +1,8 @@
 import type { ComponentType } from 'react';
 
 export type Role = 'student' | 'moderator' | 'admin' | 'owner';
+// должности поверх роли: можно обе сразу; обе дают права модерации, куратору в VK приходят отчёты о посещаемости
+export type Title = 'headman' | 'curator';
 
 export interface Me {
     id: number;
@@ -12,6 +14,7 @@ export interface Me {
     real_name?: string | null; // фамилия и имя; приходит только модераторам и выше (и своё)
     bio: string;
     role: Role;
+    titles?: Title[];
     need_roster?: boolean; // нужно выбрать своё имя в списке группы
     tg_linked?: boolean;
     vk_id?: number;
@@ -102,7 +105,10 @@ export function clearCache() {
 
 export const ROLE_LABEL: Record<Role, string> = { owner: 'Главный админ', admin: 'Админ', moderator: 'Модератор', student: 'Студент' };
 export const isAdmin = (m: Me) => m.role === 'admin' || m.role === 'owner';
-export const isModerator = (m: Me) => m.role !== 'student';
+export const TITLE_LABEL: Record<Title, string> = { headman: 'Староста', curator: 'Куратор' };
+export const isModerator = (m: { role: Role; titles?: Title[] }) => m.role !== 'student' || (m.titles?.length ?? 0) > 0;
+// подписи ролей человека: роль выше студента и должности; у обычного студента пусто
+export const roleLabels = (m: { role: Role; titles?: Title[] }) => [...(m.role !== 'student' ? [ROLE_LABEL[m.role]] : []), ...(m.titles ?? []).map(t => TITLE_LABEL[t])];
 // Ник/имя на экране не длиннее 32 символов: остальное заменяется на «...» (считаем символы Unicode, эмодзи не рвётся)
 export const NICK_MAX = 32;
 export const clip = (s: string, max = NICK_MAX) => {

@@ -34,7 +34,7 @@ export default function LessonDetails({ sel, closing, me, showMsg, onClose, onCh
     const [present, setPresent] = useState<boolean | null>(null);
     useEffect(() => {
         setPresent(null);
-        api<{ pair_no: number; user_id: number; present: boolean }[]>('GET', `/attendance?date=${sel.date}`)
+        api<{ pair_no: number; user_id?: number; present: boolean }[]>('GET', `/attendance?date=${sel.date}`)
             .then(a => setPresent(a.find(m => m.pair_no === sel.pair_no && m.user_id === me.id)?.present ?? null)).catch(() => { /* не критично */ });
     }, [sel.date, sel.pair_no, me.id]);
 

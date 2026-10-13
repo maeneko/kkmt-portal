@@ -44,10 +44,27 @@ type User struct {
 	LastName    *string `db:"last_name" json:"last_name"`
 	Bio         string  `db:"bio" json:"bio"`
 	Role        string  `db:"role" json:"role"`
+	Titles      string  `db:"titles" json:"-"`                          // «headman,curator»; наружу уходит списком titles (см. MarshalJSON)
 	NeedRoster  bool    `db:"need_roster" json:"need_roster,omitempty"` // нужно выбрать своё имя в списке группы
 	TGLinked    bool    `db:"tg_linked" json:"tg_linked,omitempty"`
 	VKID        *int64  `db:"vk_id" json:"vk_id,omitempty"` // только в /api/me: в списках не выбирается
 }
+
+// MarshalJSON добавляет к пользователю список должностей (староста, куратор).
+func (u User) MarshalJSON() ([]byte, error) {
+	type plain User
+	titles := []string{}
+	if u.Titles != "" {
+		titles = strings.Split(u.Titles, ",")
+	}
+	return json.Marshal(struct {
+		plain
+		TitleList []string `json:"titles"`
+	}{plain(u), titles})
+}
+
+// Mod — есть права модерации: роль выше студента или любая должность (староста, куратор).
+func (u *User) Mod() bool { return u.Role != "student" || u.Titles != "" }
 
 // userKey — ключ, под которым текущий пользователь лежит в контексте запроса.
 type userKey struct{}
@@ -89,7 +106,7 @@ func sessionUser(r *http.Request) *User {
 		return nil
 	}
 	var u User
-	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.real_name, u.first_name, u.last_name, u.bio, u.role, u.tg_id IS NOT NULL AS tg_linked,
+	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.real_name, u.first_name, u.last_name, u.bio, u.role, u.titles, u.tg_id IS NOT NULL AS tg_linked,
 			(u.role IN ('student', 'moderator') AND EXISTS (SELECT 1 FROM roster) AND NOT EXISTS (SELECT 1 FROM roster r WHERE r.user_id = u.id)) AS need_roster, u.vk_id
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > NOW()`, sha(c.Value))
 	if err != nil {
@@ -115,7 +132,7 @@ func authed(next http.HandlerFunc) http.HandlerFunc {
 // moderator пропускает модераторов, админов и главного админа (студентам — 403).
 func moderator(next http.HandlerFunc) http.HandlerFunc {
 	return authed(func(w http.ResponseWriter, r *http.Request) {
-		if userOf(r).Role == "student" {
+		if !userOf(r).Mod() {
 			fail(w, 403, "Только для модераторов")
 			return
 		}

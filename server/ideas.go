@@ -226,7 +226,7 @@ func deleteIdea(w http.ResponseWriter, r *http.Request) {
 	u := userOf(r)
 	var stored sql.NullString
 	db.Get(&stored, "SELECT image FROM ideas WHERE id = ?", r.PathValue("id"))
-	res, err := db.Exec("DELETE FROM ideas WHERE id = ? AND (author_id = ? OR ?)", r.PathValue("id"), u.ID, u.Role != "student")
+	res, err := db.Exec("DELETE FROM ideas WHERE id = ? AND (author_id = ? OR ?)", r.PathValue("id"), u.ID, u.Mod())
 	if serverErr(w, err) {
 		return
 	}

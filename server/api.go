@@ -21,7 +21,7 @@ import (
 
 const (
 	// Поля пользователя, которые видны всем (без tg_id и инвайт-кода).
-	userCols = "id, username, photo_url, display_name, first_name, last_name, bio, role"
+	userCols = "id, username, photo_url, display_name, first_name, last_name, bio, role, titles"
 	// Порядок в списках: главный админ, админы, студенты; внутри — по имени.
 	userOrder = "ORDER BY FIELD(role,'owner','admin','moderator','student'), first_name"
 
@@ -68,7 +68,7 @@ func fileLimit(pair int) int {
 
 // colsFor — поля пользователей для запрашивающего: модераторам и выше ещё и реальное имя.
 func colsFor(r *http.Request) string {
-	if userOf(r).Role == "student" {
+	if !userOf(r).Mod() {
 		return userCols
 	}
 	return userCols + ", real_name"
@@ -193,7 +193,7 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 // canManagePosts: глобальные новости ведут админы, новости группы — модераторы и выше (закреп, удаление чужих).
 func canManagePosts(u *User, scope string) bool {
 	if scope == "group" {
-		return u.Role != "student"
+		return u.Mod()
 	}
 	return u.Role == "admin" || u.Role == "owner"
 }
@@ -882,21 +882,33 @@ func targetUser(w http.ResponseWriter, r *http.Request) (id int64, role string, 
 	return t.ID, t.Role, true
 }
 
-// setRole назначает роль (студент, модератор, админ); только главный админ, самого главного менять нельзя.
+// setRole назначает роль (студент, модератор, админ) и/или должности (староста, куратор; можно обе): присланное меняется,
+// остальное нет. Только главный админ, самого главного менять нельзя.
 func setRole(w http.ResponseWriter, r *http.Request) {
 	if userOf(r).Role != "owner" {
 		fail(w, 403, "Только главный админ")
 		return
 	}
 	var in struct {
-		Role string `json:"role"`
+		Role   *string   `json:"role"`
+		Titles *[]string `json:"titles"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Role != "student" && in.Role != "moderator" && in.Role != "admin" {
+	if in.Role != nil && *in.Role != "student" && *in.Role != "moderator" && *in.Role != "admin" {
 		fail(w, 400, "role")
 		return
+	}
+	titles := ""
+	if in.Titles != nil {
+		for _, t := range *in.Titles {
+			if t != "headman" && t != "curator" {
+				fail(w, 400, "titles")
+				return
+			}
+		}
+		titles = strings.Join(slices.Compact(slices.Sorted(slices.Values(*in.Titles))), ",")
 	}
 	id, role, found := targetUser(w, r)
 	if !found {
@@ -906,10 +918,17 @@ func setRole(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "Главного админа менять нельзя")
 		return
 	}
-	if _, err := db.Exec("UPDATE users SET role = ? WHERE id = ?", in.Role, id); serverErr(w, err) {
-		return
+	if in.Role != nil {
+		if _, err := db.Exec("UPDATE users SET role = ? WHERE id = ?", *in.Role, id); serverErr(w, err) {
+			return
+		}
 	}
-	logActivity(userOf(r).ID, "user", "изменил(а) роль пользователя "+userName(id)+": "+map[string]string{"student": "студент", "moderator": "модератор", "admin": "админ"}[in.Role])
+	if in.Titles != nil {
+		if _, err := db.Exec("UPDATE users SET titles = ? WHERE id = ?", titles, id); serverErr(w, err) {
+			return
+		}
+	}
+	logActivity(userOf(r).ID, "user", "изменил(а) роли пользователя "+userName(id))
 	respondOK(w)
 }
 

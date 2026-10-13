@@ -49,6 +49,7 @@ var schema = []string{
         real_name VARCHAR(64) NULL,
         bio VARCHAR(500) NOT NULL DEFAULT '',
         role ENUM('student','admin','owner','moderator') NOT NULL DEFAULT 'student',
+        titles SET('headman','curator') NOT NULL DEFAULT '',
         invite_code CHAR(6) NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         last_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -220,23 +221,26 @@ var schema = []string{
         user_id INT NULL UNIQUE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     ) CHARACTER SET utf8mb4`,
-	// Посещаемость: отметка на каждую пару и дату хранится постоянно (история), present = 0 — не был
-	`CREATE TABLE IF NOT EXISTS attendance (
-        date DATE NOT NULL,
-        pair_no TINYINT NOT NULL,
-        user_id INT NOT NULL,
-        present TINYINT(1) NOT NULL,
-        marked_by INT NULL,
-        marked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (date, pair_no, user_id),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (marked_by) REFERENCES users(id) ON DELETE SET NULL
-    ) CHARACTER SET utf8mb4`,
+	attendanceDDL,
 	`CREATE TABLE IF NOT EXISTS settings (
         k VARCHAR(50) PRIMARY KEY,
         v VARCHAR(500) NOT NULL
     ) CHARACTER SET utf8mb4`,
 }
+
+// Посещаемость: отметка на каждую пару и дату хранится постоянно (история), present = 0 — не был.
+// Отмечают людей из списка группы, а не аккаунты: так можно отметить и тех, кто ещё не зарегистрировался.
+const attendanceDDL = `CREATE TABLE IF NOT EXISTS attendance (
+        date DATE NOT NULL,
+        pair_no TINYINT NOT NULL,
+        roster_id INT NOT NULL,
+        present TINYINT(1) NOT NULL,
+        marked_by INT NULL,
+        marked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (date, pair_no, roster_id),
+        FOREIGN KEY (roster_id) REFERENCES roster(id) ON DELETE CASCADE,
+        FOREIGN KEY (marked_by) REFERENCES users(id) ON DELETE SET NULL
+    ) CHARACTER SET utf8mb4`
 
 // defaultTimes — звонки по умолчанию, если таблица pair_times пустая.
 var defaultTimes = [][2]string{{"08:30", "10:05"}, {"10:15", "11:50"}, {"12:20", "13:55"}, {"14:05", "15:40"}, {"15:50", "17:25"}, {"17:35", "19:10"}}
@@ -247,6 +251,25 @@ func migrate(conn *sqlx.DB) error {
 	for _, q := range schema {
 		if _, err := conn.Exec(q); err != nil {
 			return err
+		}
+	}
+	// посещаемость раньше хранилась по аккаунтам: переносим отметки тех, кто выбрал имя в списке группы;
+	// старая таблица остаётся как attendance_by_user (на случай, если нужны остальные отметки)
+	var byUser int
+	if err := conn.Get(&byUser, `SELECT COUNT(*) FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance' AND COLUMN_NAME = 'user_id'`); err != nil {
+		return err
+	}
+	if byUser > 0 {
+		for _, q := range []string{
+			"RENAME TABLE attendance TO attendance_by_user",
+			attendanceDDL,
+			`INSERT INTO attendance (date, pair_no, roster_id, present, marked_by, marked_at)
+				SELECT a.date, a.pair_no, r.id, a.present, a.marked_by, a.marked_at FROM attendance_by_user a JOIN roster r ON r.user_id = a.user_id`,
+		} {
+			if _, err := conn.Exec(q); err != nil {
+				return err
+			}
 		}
 	}
 	// колонки, добавленные позже: на уже созданных таблицах (MySQL без ADD COLUMN IF NOT EXISTS)
@@ -286,6 +309,10 @@ func migrate(conn *sqlx.DB) error {
 		return err
 	}
 	if _, err := addColumn("users", "real_name", "VARCHAR(64) NULL"); err != nil {
+		return err
+	}
+	// должности староста и куратор: назначаются поверх роли, можно обе сразу; права модерации дают обе
+	if _, err := addColumn("users", "titles", "SET('headman','curator') NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	// вход через VK ID: у такого пользователя нет tg_id
