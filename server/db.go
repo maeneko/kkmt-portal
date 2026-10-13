@@ -213,6 +213,18 @@ var schema = []string{
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
     ) CHARACTER SET utf8mb4`,
+	// Посещаемость: отметка на каждую пару и дату хранится постоянно (история), present = 0 — не был
+	`CREATE TABLE IF NOT EXISTS attendance (
+        date DATE NOT NULL,
+        pair_no TINYINT NOT NULL,
+        user_id INT NOT NULL,
+        present TINYINT(1) NOT NULL,
+        marked_by INT NULL,
+        marked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (date, pair_no, user_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (marked_by) REFERENCES users(id) ON DELETE SET NULL
+    ) CHARACTER SET utf8mb4`,
 	`CREATE TABLE IF NOT EXISTS settings (
         k VARCHAR(50) PRIMARY KEY,
         v VARCHAR(500) NOT NULL

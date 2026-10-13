@@ -13,6 +13,7 @@ func routes() *http.ServeMux {
 	chatRoutes(m)
 	ideaRoutes(m)
 	homeworkRoutes(m)
+	attendanceRoutes(m)
 	adminRoutes(m)
 
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +61,10 @@ func authRoutes(m *http.ServeMux) {
 	m.HandleFunc(
 		"PATCH /api/me",
 		authed(updateMe),
+	)
+	m.HandleFunc(
+		"DELETE /api/me/social/{kind}",
+		authed(unlinkSocial),
 	)
 }
 
@@ -184,6 +189,17 @@ func homeworkRoutes(m *http.ServeMux) {
 	m.HandleFunc(
 		"DELETE /api/materials/{id}",
 		moderator(deleteMaterial),
+	)
+}
+
+func attendanceRoutes(m *http.ServeMux) {
+	m.HandleFunc(
+		"GET /api/attendance",
+		authed(listAttendance),
+	)
+	m.HandleFunc(
+		"PUT /api/attendance",
+		moderator(saveAttendance),
 	)
 }
 

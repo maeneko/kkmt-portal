@@ -1,12 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ROLE_LABEL, api, cached, displayName, errText, NICK_MAX, type PageProps, type Role } from '../lib/api';
 import Avatar from './Avatar';
-import { IcoEdit } from './icons';
+import { useConfirm } from './Dialog';
+import { IcoEdit, IcoTelegram, IcoVK } from './icons';
 import './ProfileView.css';
 
 interface Member { id: number; username: string | null; photo_url: string | null; display_name: string | null; real_name?: string | null; first_name: string; last_name: string | null; bio: string; role: Role }
 
 // Весь профиль: карточка, редактирование имени, одногруппники. Живёт в шторке профиля (ProfileMenu)
+// Привязанная соцсеть: капсула с иконкой и профилем (ссылкой, если он известен) и кнопка действия справа
+function Social({ icon, name, handle, href, action }: { icon: ReactNode; name: string; handle?: string; href?: string; action: ReactNode }) {
+    const text = <>{icon}<span>{name} · {handle ?? 'не привязан'}</span></>;
+    return (
+        <div className="row" style={{ gap: 8 }}>
+            {href ? <a className="hw-contact-row grow" href={href} target="_blank" rel="noopener noreferrer">{text}</a> : <div className="hw-contact-row grow">{text}</div>}
+            {action}
+        </div>
+    );
+}
+
 export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, 'me' | 'reloadMe' | 'showMsg'>) {
     const [name, setName] = useState(me.display_name ?? '');
     const [realName, setRealName] = useState(me.real_name ?? '');
@@ -21,6 +33,11 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
         setSaving(true);
         try { await api('PATCH', '/me', { display_name: name, real_name: realName }); await reloadMe(); setEditing(false); showMsg('Профиль сохранён'); }
         catch (e) { showMsg(errText(e)); } finally { setSaving(false); }
+    };
+    const [ask, dialog] = useConfirm();
+    const unlink = async (kind: 'tg' | 'vk', title: string) => {
+        if (!await ask({ title: `Отвязать ${title}?`, body: 'Входить через него больше не получится.', confirm: 'Отвязать', danger: true })) return;
+        try { await api('DELETE', `/me/social/${kind}`); await reloadMe(); showMsg(`${title} отвязан`); } catch (e) { showMsg(errText(e)); }
     };
     const shown = displayName(me);
     const dirty = name !== (me.display_name ?? '') || realName !== (me.real_name ?? '');
@@ -40,7 +57,6 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
                             <span className={`chip ${me.role === 'student' ? '' : 'chip--primary'}`}>{ROLE_LABEL[me.role]}</span>
                         </div>
                     </div>
-                    {!me.vk_linked && <button className="btn btn--outline btn--sm" onClick={() => { location.href = '/api/auth/vk'; }}>Привязать VK</button>}
                     <div className={`fold profile-edit-fold${editing ? '' : ' fold--open'}`}>
                         <div className="fold-in"><button className="btn btn--tonal btn--sm profile-edit" tabIndex={editing ? -1 : 0} onClick={() => setEditing(true)}><IcoEdit /> Редактировать</button></div>
                     </div>
@@ -57,6 +73,16 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
                         <input className="field" maxLength={64} placeholder="Иванов Иван" autoComplete="name" value={realName} onChange={e => setRealName(e.target.value)} />
                         <span className="hint">Видят только модераторы и админы</span>
                     </label>
+                    <div className="stack" style={{ gap: 10, margin: '8px 0' }}>
+                        <span className="label">Привязанные соцсети</span>
+                        <Social icon={<IcoTelegram />} name="Telegram" handle={me.tg_linked ? (me.username ? `@${me.username}` : 'привязан') : undefined}
+                                href={me.tg_linked && me.username ? `https://t.me/${me.username}` : undefined}
+                                action={me.tg_linked && <button type="button" className="btn btn--outline btn--sm" disabled={!me.vk_id} title={me.vk_id ? undefined : 'Единственный способ входа'} onClick={() => unlink('tg', 'Telegram')}>Отвязать</button>} />
+                        <Social icon={<IcoVK />} name="VK" handle={me.vk_id ? `id${me.vk_id}` : undefined} href={me.vk_id ? `https://vk.com/id${me.vk_id}` : undefined}
+                                action={me.vk_id
+                                    ? <button type="button" className="btn btn--outline btn--sm" disabled={!me.tg_linked} title={me.tg_linked ? undefined : 'Единственный способ входа'} onClick={() => unlink('vk', 'VK')}>Отвязать</button>
+                                    : <button type="button" className="btn btn--tonal btn--sm" onClick={() => { location.href = '/api/auth/vk'; }}>Привязать</button>} />
+                    </div>
                     <div className="row" style={{ gap: 8 }}>
                         <button className="btn btn--primary" disabled={saving || !dirty} onClick={save}>Сохранить</button>
                         <button className="btn btn--tonal" disabled={saving} onClick={cancel}>Отмена</button>
@@ -81,6 +107,7 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
                     ))}
                 </div>
             </div>
+            {dialog}
         </>
     );
 }

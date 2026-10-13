@@ -44,7 +44,8 @@ type User struct {
 	LastName    *string `db:"last_name" json:"last_name"`
 	Bio         string  `db:"bio" json:"bio"`
 	Role        string  `db:"role" json:"role"`
-	VKLinked    bool    `db:"vk_linked" json:"vk_linked,omitempty"`
+	TGLinked    bool    `db:"tg_linked" json:"tg_linked,omitempty"`
+	VKID        *int64  `db:"vk_id" json:"vk_id,omitempty"` // только в /api/me: в списках не выбирается
 }
 
 // userKey — ключ, под которым текущий пользователь лежит в контексте запроса.
@@ -87,7 +88,7 @@ func sessionUser(r *http.Request) *User {
 		return nil
 	}
 	var u User
-	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.real_name, u.first_name, u.last_name, u.bio, u.role, u.vk_id IS NOT NULL AS vk_linked
+	err = db.Get(&u, `SELECT u.id, u.username, u.photo_url, u.display_name, u.real_name, u.first_name, u.last_name, u.bio, u.role, u.tg_id IS NOT NULL AS tg_linked, u.vk_id
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > NOW()`, sha(c.Value))
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -178,6 +179,28 @@ func config(w http.ResponseWriter, r *http.Request) {
 
 // me — профиль вошедшего пользователя.
 func me(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, userOf(r)) }
+
+// unlinkSocial отвязывает Telegram или VK, если у пользователя остаётся другой способ входа.
+func unlinkSocial(w http.ResponseWriter, r *http.Request) {
+	col, other := "tg_id", "vk_id"
+	switch r.PathValue("kind") {
+	case "vk":
+		col, other = other, col
+	case "tg":
+	default:
+		fail(w, 404, "Not found")
+		return
+	}
+	res, err := db.Exec("UPDATE users SET "+col+" = NULL WHERE id = ? AND "+other+" IS NOT NULL", userOf(r).ID)
+	if serverErr(w, err) {
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		fail(w, 400, "Нельзя отвязать единственный способ входа")
+		return
+	}
+	respondOK(w)
+}
 
 // logout удаляет сессию из базы и стирает cookie.
 func logout(w http.ResponseWriter, r *http.Request) {

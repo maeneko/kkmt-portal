@@ -8,6 +8,7 @@ import { IcoPin, IcoPlus, IcoTrash } from '../../components/icons';
 import Chat from './Chat';
 import Ideas from './Ideas';
 import Activity from './Activity';
+import Attendance from './Attendance';
 import './feed.css';
 
 interface Post { id: number; body: string; pinned: boolean; created_at: string; author_id: number; author_name: string; author_photo: string | null }
@@ -16,7 +17,12 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: 'numer
 
 // Как в Discord: одна колонка каналов — глобальные новости и новости группы первыми, ниже чаты; посты показываются в той же панели
 export default function Feed({ me, showMsg, group }: PageProps) {
-    return <Chat me={me} group={group} showMsg={showMsg} news={scope => scope === 'all' ? <Activity showMsg={showMsg} /> : scope === 'ideas' ? <Ideas me={me} showMsg={showMsg} /> : <News key={scope} me={me} showMsg={showMsg} scope={scope} />} />;
+    return (
+        <>
+            <Chat me={me} group={group} showMsg={showMsg} news={scope => scope === 'all' ? <Activity showMsg={showMsg} /> : scope === 'ideas' ? <Ideas me={me} showMsg={showMsg} /> : <News key={scope} me={me} showMsg={showMsg} scope={scope} />} />
+            {isModerator(me) && <Attendance showMsg={showMsg} />}
+        </>
+    );
 }
 
 // Лента постов: глобальные новости пишут и ведут админы; новости группы пишут все, закрепляют и удаляют чужие — модераторы.

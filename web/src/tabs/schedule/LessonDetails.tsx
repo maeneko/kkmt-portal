@@ -30,6 +30,13 @@ export default function LessonDetails({ sel, closing, me, showMsg, onClose, onCh
     }, [sel.date, showMsg]);
     useEffect(() => { loadHw(); }, [loadHw]);
     const changed = () => { loadHw(); onChanged(); };
+    // своя отметка посещаемости на эту пару (сервер отдаёт студенту только его отметки)
+    const [present, setPresent] = useState<boolean | null>(null);
+    useEffect(() => {
+        setPresent(null);
+        api<{ pair_no: number; user_id: number; present: boolean }[]>('GET', `/attendance?date=${sel.date}`)
+            .then(a => setPresent(a.find(m => m.pair_no === sel.pair_no && m.user_id === me.id)?.present ?? null)).catch(() => { /* не критично */ });
+    }, [sel.date, sel.pair_no, me.id]);
 
     const { pair_no: pair } = sel;
     // время пары: у субботы свои звонки (если заданы)
@@ -44,6 +51,7 @@ export default function LessonDetails({ sel, closing, me, showMsg, onClose, onCh
                 <div className="li-wide"><dt>День</dt><dd>{sel.day}, {sel.date.slice(8)}.{sel.date.slice(5, 7)}</dd></div>
                 <div><dt>Пара</dt><dd>{pair}{t ? ` · ${t.start_time}–${t.end_time}` : ''}</dd></div>
                 <div><dt>Аудитория</dt><dd>{sel.room || '—'}</dd></div>
+                {present !== null && <div className="li-wide"><dt>Посещаемость</dt><dd>{present ? 'Вы были на паре' : 'Вас не было на паре'}</dd></div>}
                 {sel.teacher
                     ? <div className="li-wide li-teacher"><TeacherInfo name={sel.teacher} contact={data?.teachers?.find(x => x.name === sel.teacher)} canEdit={mod} onSaved={renamed => { loadData(); if (renamed) { onChanged(); onClose(); } }} showMsg={showMsg} /></div>
                     : <div className="li-wide"><dt>Преподаватель</dt><dd>—</dd></div>}
@@ -68,7 +76,7 @@ export default function LessonDetails({ sel, closing, me, showMsg, onClose, onCh
 }
 
 // Подробности пары на телефоне — шторка снизу: смахивание вниз (с любого места, если содержимое прокручено к началу), нажатие на фон или ✕ закрывают.
-function LessonSheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function LessonSheet({ title, onClose, out, children }: { title: string; onClose: () => void; out?: boolean; children: ReactNode }) {
     const [dy, setDy] = useState(0);
     const start = useRef<{ y: number; t: number } | null>(null);
     const body = useRef<HTMLDivElement>(null);
@@ -78,8 +86,8 @@ function LessonSheet({ title, onClose, children }: { title: string; onClose: () 
     const [closing, setClosing] = useState(false);
     const close = () => { if (closing) return; setClosing(true); window.setTimeout(onClose, 260); };
     return (
-        <div className="scrim-sheet" style={{ opacity: closing ? 0 : 1 - Math.min(dy / 500, 0.6) }} onClick={e => { if (e.target === e.currentTarget) close(); }}>
-            <div className={`sheet sheet--lesson${closing ? ' sheet--out' : ''}`} role="dialog" aria-modal="true" aria-labelledby="lesson-title"
+        <div className="scrim-sheet" style={{ opacity: closing || out ? 0 : 1 - Math.min(dy / 500, 0.6) }} onClick={e => { if (e.target === e.currentTarget) close(); }}>
+            <div className={`sheet sheet--lesson${closing || out ? ' sheet--out' : ''}`} role="dialog" aria-modal="true" aria-labelledby="lesson-title"
                  style={dy && !closing ? { transform: `translateY(${dy}px)`, transition: 'none' } : undefined}
                  onTouchStart={e => { start.current = canDrag(e) ? { y: e.touches[0].clientY, t: Date.now() } : null; }}
                  onTouchMove={e => { if (start.current && canDrag(e)) setDy(Math.max(0, e.touches[0].clientY - start.current.y)); }}
