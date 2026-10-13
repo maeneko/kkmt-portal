@@ -133,11 +133,18 @@
 /* отправка, как лист Apple Pay: окно целиком опускается — верхний край съезжает вниз, остаётся компактная карточка у нижнего края; потом уезжает вниз совсем */
 .att-page { transition: top 520ms var(--ease-std); }
 .att-page--busy { top: calc(100dvh - 318px); }
-.att-page .lesson-pop-head { padding-top: 16px; } /* верхний отступ панели у заголовка, чтобы плавающая полоска прилипала к самому краю */
+.att-page .lesson-pop-head { padding-top: 12px; margin-bottom: 4px; }
+.att-page .lesson-pop-title { font-size: 18px; line-height: 24px; padding-top: 4px; }
 .att-page--out { animation: att-page-out 280ms var(--ease-out) forwards; pointer-events: none; }
 @keyframes att-page-out { to { opacity: 0; transform: translateY(56px); } }
 .scrim-sheet:has(.att) .sheet { height: calc(100dvh - 72px - env(safe-area-inset-top)); /* сверху остаётся зазор ~60px: шторка не упирается в адресную строку */ max-height: none; transition: height 520ms var(--ease-std), transform 350ms var(--ease-in); }
 .scrim-sheet:has(.att--busy) .sheet { height: 328px; }
+/* шапка «Посещаемость» компактнее: ручка пониже, заголовок меньше, меньше пустого места над списком */
+.scrim-sheet:has(.att) .sheet { gap: 4px; }
+.scrim-sheet:has(.att) .sheet-drag { gap: 0; }
+.scrim-sheet:has(.att) .sheet-handle { height: 20px; margin-top: 0; }
+.scrim-sheet:has(.att) .sheet-title { font-size: 18px; line-height: 24px; }
+.scrim-sheet:has(.att) .sheet-head { min-height: 40px; }
 .scrim-sheet:has(.att) .sheet--out { transition: transform 260ms var(--ease-out), height 520ms var(--ease-std); }
 /* Полоска «N из M» прилипает к верху. Отлипает как верхняя панель в Android: --p (0…1) растёт с прокруткой, фон и тень проявляются,
    содержимое отъезжает от краёв. --p зарегистрирована и плавно догоняет значение — отделяется неохотно, с инерцией.

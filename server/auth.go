@@ -44,7 +44,7 @@ type User struct {
 	LastName    *string `db:"last_name" json:"last_name"`
 	Bio         string  `db:"bio" json:"bio"`
 	Role        string  `db:"role" json:"role"`
-	Titles      string  `db:"titles" json:"-"`                          // «headman,curator»; наружу уходит списком titles (см. MarshalJSON)
+	Titles      string  `db:"titles" json:"-"`                          // «headman»; наружу уходит списком titles (см. MarshalJSON)
 	NeedRoster  bool    `db:"need_roster" json:"need_roster,omitempty"` // нужно выбрать своё имя в списке группы
 	TGLinked    bool    `db:"tg_linked" json:"tg_linked,omitempty"`
 	VKID        *int64  `db:"vk_id" json:"vk_id,omitempty"` // только в /api/me: в списках не выбирается
@@ -63,7 +63,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 	}{plain(u), titles})
 }
 
-// Mod — есть права модерации: роль выше студента или любая должность (староста, куратор).
+// Mod — есть права модерации: роль выше студента (в том числе куратор) или должность староста.
 func (u *User) Mod() bool { return u.Role != "student" || u.Titles != "" }
 
 // userKey — ключ, под которым текущий пользователь лежит в контексте запроса.
@@ -280,10 +280,10 @@ func loginOrRegister(col string, tg tgData, s signup) (int64, loginResult, error
 	err = tx.Get(&id, "SELECT id FROM users WHERE "+col+" = ? FOR UPDATE", tg.ID)
 	switch {
 	case err == nil:
-		// у VK нет ника, а профиль мог быть создан через Telegram — имя и фото из VK не трогаем
+		// имя и фамилию из соцсетей не берём; у Telegram обновляем ник и фото, у VK — ничего (профиль мог быть создан через Telegram)
 		if col == "tg_id" {
-			_, err = tx.Exec("UPDATE users SET username = ?, first_name = ?, last_name = ?, photo_url = ?, last_seen = NOW() WHERE id = ?",
-				nullable(tg.Username), tg.FirstName, nullable(tg.LastName), nullable(tg.PhotoURL), id)
+			_, err = tx.Exec("UPDATE users SET username = ?, photo_url = ?, last_seen = NOW() WHERE id = ?",
+				nullable(tg.Username), nullable(tg.PhotoURL), id)
 		} else {
 			_, err = tx.Exec("UPDATE users SET last_seen = NOW() WHERE id = ?", id)
 		}
@@ -403,12 +403,8 @@ func telegramLogin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "Вход через Telegram не подтверждён. Попробуйте ещё раз")
 		return
 	}
-	first := c.GivenName
-	if first == "" {
-		first = c.Name
-	}
 	id, _ := c.ID.Int64()
-	finishLogin(w, "tg_id", tgData{id, first, c.FamilyName, c.Username, c.Picture}, in.signup)
+	finishLogin(w, "tg_id", tgData{ID: id, Username: c.Username, PhotoURL: c.Picture}, in.signup)
 }
 
 // Только для локальной разработки (DEV_LOGIN=1): вход без Telegram.
@@ -479,13 +475,10 @@ func clientID() string {
 
 type tgClaims struct {
 	jwt.RegisteredClaims
-	ID         json.Number `json:"id"` // Telegram присылает id то числом, то строкой — json.Number принимает оба
-	Name       string      `json:"name"`
-	GivenName  string      `json:"given_name"`
-	FamilyName string      `json:"family_name"`
-	Username   string      `json:"preferred_username"`
-	Picture    string      `json:"picture"`
-	Nonce      string      `json:"nonce"`
+	ID       json.Number `json:"id"` // Telegram присылает id то числом, то строкой — json.Number принимает оба
+	Username string      `json:"preferred_username"`
+	Picture  string      `json:"picture"`
+	Nonce    string      `json:"nonce"`
 }
 
 func verifyIDToken(token string) (*tgClaims, error) {

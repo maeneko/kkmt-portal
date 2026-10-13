@@ -1,8 +1,8 @@
 import type { ComponentType } from 'react';
 
-export type Role = 'student' | 'moderator' | 'admin' | 'owner';
-// должности поверх роли: можно обе сразу; обе дают права модерации, куратору в VK приходят отчёты о посещаемости
-export type Title = 'headman' | 'curator';
+export type Role = 'student' | 'moderator' | 'curator' | 'admin' | 'owner';
+// должность поверх роли: староста (права модерации); куратор — отдельная роль, ему в VK приходят отчёты о посещаемости
+export type Title = 'headman';
 
 export interface Me {
     id: number;
@@ -103,9 +103,9 @@ export function clearCache() {
     try { localStorage.removeItem(CACHE_KEY); } catch { /* не критично */ }
 }
 
-export const ROLE_LABEL: Record<Role, string> = { owner: 'Главный админ', admin: 'Админ', moderator: 'Модератор', student: 'Студент' };
+export const ROLE_LABEL: Record<Role, string> = { owner: 'Главный админ', admin: 'Админ', curator: 'Куратор', moderator: 'Модератор', student: 'Студент' };
 export const isAdmin = (m: Me) => m.role === 'admin' || m.role === 'owner';
-export const TITLE_LABEL: Record<Title, string> = { headman: 'Староста', curator: 'Куратор' };
+export const TITLE_LABEL: Record<Title, string> = { headman: 'Староста' };
 export const isModerator = (m: { role: Role; titles?: Title[] }) => m.role !== 'student' || (m.titles?.length ?? 0) > 0;
 // подписи ролей человека: роль выше студента и должности; у обычного студента пусто
 export const roleLabels = (m: { role: Role; titles?: Title[] }) => [...(m.role !== 'student' ? [ROLE_LABEL[m.role]] : []), ...(m.titles ?? []).map(t => TITLE_LABEL[t])];

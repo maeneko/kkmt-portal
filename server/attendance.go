@@ -58,7 +58,7 @@ func saveAttendance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var peers []int64
-	if serverErr(w, db.Select(&peers, "SELECT vk_id FROM users WHERE FIND_IN_SET('curator', titles) AND vk_id IS NOT NULL")) {
+	if serverErr(w, db.Select(&peers, "SELECT vk_id FROM users WHERE role = 'curator' AND vk_id IS NOT NULL")) {
 		return
 	}
 	if os.Getenv("VK_BOT_TOKEN") == "" {

@@ -23,7 +23,7 @@ const (
 	// Поля пользователя, которые видны всем (без tg_id и инвайт-кода).
 	userCols = "id, username, photo_url, display_name, first_name, last_name, bio, role, titles"
 	// Порядок в списках: главный админ, админы, студенты; внутри — по имени.
-	userOrder = "ORDER BY FIELD(role,'owner','admin','moderator','student'), first_name"
+	userOrder = "ORDER BY FIELD(role,'owner','admin','curator','moderator','student'), first_name"
 
 	maxFileMB    = 50 // максимальный размер одного файла к домашнему заданию
 	filesPerPair = 5  // сколько файлов можно прикрепить к одной паре
@@ -882,7 +882,7 @@ func targetUser(w http.ResponseWriter, r *http.Request) (id int64, role string, 
 	return t.ID, t.Role, true
 }
 
-// setRole назначает роль (студент, модератор, админ) и/или должности (староста, куратор; можно обе): присланное меняется,
+// setRole назначает роль (студент, модератор, куратор, админ) и/или должность староста: присланное меняется,
 // остальное нет. Только главный админ, самого главного менять нельзя.
 func setRole(w http.ResponseWriter, r *http.Request) {
 	if userOf(r).Role != "owner" {
@@ -896,14 +896,14 @@ func setRole(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Role != nil && *in.Role != "student" && *in.Role != "moderator" && *in.Role != "admin" {
+	if in.Role != nil && *in.Role != "student" && *in.Role != "moderator" && *in.Role != "curator" && *in.Role != "admin" {
 		fail(w, 400, "role")
 		return
 	}
 	titles := ""
 	if in.Titles != nil {
 		for _, t := range *in.Titles {
-			if t != "headman" && t != "curator" {
+			if t != "headman" {
 				fail(w, 400, "titles")
 				return
 			}

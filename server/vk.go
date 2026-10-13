@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,9 +30,9 @@ var vkClient = &http.Client{Timeout: 10 * time.Second}
 
 // vkPass — подписанные данные человека из VK; фронт возвращает их в POST /api/auth/vk.
 type vkPass struct {
-	ID                 int64
-	First, Last, Photo string
-	Exp                int64
+	ID          int64
+	Nick, Photo string
+	Exp         int64
 }
 
 func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
@@ -100,10 +101,8 @@ func vkProfile(r *http.Request, verifier string) (vkPass, error) {
 	}
 	var info struct {
 		User struct {
-			ID        json.Number `json:"user_id"` // VK присылает id строкой
-			FirstName string      `json:"first_name"`
-			LastName  string      `json:"last_name"`
-			Avatar    string      `json:"avatar"`
+			ID     json.Number `json:"user_id"` // VK присылает id строкой
+			Avatar string      `json:"avatar"`
 		} `json:"user"`
 	}
 	if err := vkPost("user_info", url.Values{"client_id": {cid}, "access_token": {tok.AccessToken}}, &info); err != nil {
@@ -113,7 +112,33 @@ func vkProfile(r *http.Request, verifier string) (vkPass, error) {
 	if err != nil || id <= 0 {
 		return vkPass{}, errors.New("нет user_id")
 	}
-	return vkPass{id, info.User.FirstName, info.User.LastName, info.User.Avatar, time.Now().Add(30 * time.Minute).Unix()}, nil
+	return vkPass{id, vkNick(id), info.User.Avatar, time.Now().Add(30 * time.Minute).Unix()}, nil
+}
+
+// vkNick — короткое имя из ссылки на профиль (vk.ru/maeneko → maeneko): это и есть ник человека. Имя и фамилия из VK не берутся.
+// У ключа входа VK ID такого поля нет, поэтому спрашиваем ключом сообщества (VK_BOT_TOKEN); не вышло — «id123».
+func vkNick(id int64) string {
+	sid := strconv.FormatInt(id, 10)
+	token := os.Getenv("VK_BOT_TOKEN")
+	if token == "" {
+		return "id" + sid
+	}
+	resp, err := vkClient.PostForm("https://api.vk.com/method/users.get", url.Values{
+		"access_token": {token}, "v": {"5.199"}, "user_ids": {sid}, "fields": {"screen_name"},
+	})
+	if err != nil {
+		return "id" + sid
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Response []struct {
+			ScreenName string `json:"screen_name"`
+		} `json:"response"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&out) != nil || len(out.Response) == 0 || out.Response[0].ScreenName == "" {
+		return "id" + sid
+	}
+	return clip(out.Response[0].ScreenName, 32)
 }
 
 // vkCallback: вошедший пользователь привязывает VK к своему аккаунту, остальные получают пропуск для входа.
@@ -148,7 +173,7 @@ func vkCallback(w http.ResponseWriter, r *http.Request) {
 	body, _ := json.Marshal(p)
 	payload := b64(body)
 	// name и photo — только для показа на шаге ключа; сервер им не верит, всё берёт из подписанного пропуска
-	q := url.Values{"vk": {payload + "." + nonceMAC("vk."+payload)}, "name": {p.First + " " + p.Last}, "photo": {p.Photo}}
+	q := url.Values{"vk": {payload + "." + nonceMAC("vk."+payload)}, "name": {p.Nick}, "photo": {p.Photo}}
 	http.Redirect(w, r, "/#"+q.Encode(), http.StatusFound)
 }
 
@@ -171,5 +196,5 @@ func vkLogin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "Вход через VK не подтверждён. Попробуйте ещё раз")
 		return
 	}
-	finishLogin(w, "vk_id", tgData{ID: p.ID, FirstName: p.First, LastName: p.Last, PhotoURL: p.Photo}, in.signup)
+	finishLogin(w, "vk_id", tgData{ID: p.ID, Username: p.Nick, PhotoURL: p.Photo}, in.signup)
 }

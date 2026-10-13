@@ -136,6 +136,7 @@ function Members({ me, showMsg }: Pick<PageProps, 'me' | 'showMsg'>) {
                                             onChange={e => patch(m, { role: e.target.value as Role })}>
                                         <option value="student">Студент</option>
                                         <option value="moderator">Модератор</option>
+                                        <option value="curator">Куратор</option>
                                         <option value="admin">Админ</option>
                                     </select>
                                 )

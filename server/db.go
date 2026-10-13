@@ -48,7 +48,7 @@ var schema = []string{
         display_name VARCHAR(64) NULL,
         real_name VARCHAR(64) NULL,
         bio VARCHAR(500) NOT NULL DEFAULT '',
-        role ENUM('student','admin','owner','moderator') NOT NULL DEFAULT 'student',
+        role ENUM('student','admin','owner','moderator','curator') NOT NULL DEFAULT 'student',
         titles SET('headman','curator') NOT NULL DEFAULT '',
         invite_code CHAR(6) NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -311,7 +311,7 @@ func migrate(conn *sqlx.DB) error {
 	if _, err := addColumn("users", "real_name", "VARCHAR(64) NULL"); err != nil {
 		return err
 	}
-	// должности староста и куратор: назначаются поверх роли, можно обе сразу; права модерации дают обе
+	// должность староста назначается поверх роли и даёт права модерации
 	if _, err := addColumn("users", "titles", "SET('headman','curator') NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -332,8 +332,16 @@ func migrate(conn *sqlx.DB) error {
 			return err
 		}
 	}
-	// роль moderator добавлена позже; новое значение в конце ENUM — ALTER без перестройки таблицы
-	if _, err := conn.Exec("ALTER TABLE users MODIFY role ENUM('student','admin','owner','moderator') NOT NULL DEFAULT 'student'"); err != nil {
+	// роли moderator и curator добавлены позже; новое значение в конце ENUM — ALTER без перестройки таблицы
+	if _, err := conn.Exec("ALTER TABLE users MODIFY role ENUM('student','admin','owner','moderator','curator') NOT NULL DEFAULT 'student'"); err != nil {
+		return err
+	}
+	// куратор был должностью (titles), теперь это основная роль: студенты и модераторы с этой должностью становятся кураторами;
+	// у админов и главного админа должность просто снимается (роль выше). Значение 'curator' в SET остаётся неиспользуемым, чтобы не перестраивать таблицу
+	if _, err := conn.Exec("UPDATE users SET role = 'curator' WHERE FIND_IN_SET('curator', titles) AND role IN ('student', 'moderator')"); err != nil {
+		return err
+	}
+	if _, err := conn.Exec("UPDATE users SET titles = IF(FIND_IN_SET('headman', titles), 'headman', '') WHERE FIND_IN_SET('curator', titles)"); err != nil {
 		return err
 	}
 	// статус идеи clarify («нужны подробности») добавлен позже; новое значение в конце ENUM — ALTER без перестройки таблицы

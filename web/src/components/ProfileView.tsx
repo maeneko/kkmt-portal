@@ -55,6 +55,8 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
             setPickFor(null); setMembers(await api<Member[]>('GET', '/users')); await reloadMe(); showMsg('Имя изменено');
         } catch (e) { showMsg(errText(e)); openPick(pickFor); } // имя могли занять раньше
     };
+    const curators = members.filter(m => m.role === 'curator');
+    const classmates = members.filter(m => m.role !== 'curator');
     const shown = displayName(me);
     const dirty = name !== (me.display_name ?? '');
     const cancel = () => { setName(me.display_name ?? ''); setEditing(false); };
@@ -110,10 +112,27 @@ export default function ProfileView({ me, reloadMe, showMsg }: Pick<PageProps, '
                 </div>
             </div>
 
+            {/* куратор — отдельной выделенной карточкой над одногруппниками */}
+            {curators.length > 0 && (
+                <div className="card profile-curator">
+                    <span className="card-title">{curators.length > 1 ? 'Кураторы' : 'Куратор'}</span>
+                    {curators.map(m => (
+                        <div className="member" key={m.id}>
+                            <Avatar name={displayName(m)} photo={m.photo_url} />
+                            <div className="grow">
+                                <div className="nm" style={{ fontWeight: 500 }}>{displayName(m)}</div>
+                                <div className="hint nm">{[m.real_name, m.username && `@${m.username}`].filter(Boolean).join(' · ')}</div>
+                            </div>
+                            {roleLabels(m).filter(l => l !== ROLE_LABEL.curator).map(l => <span key={l} className="chip chip--primary">{l}</span>)}
+                        </div>
+                    ))}
+                </div>
+            )}
+
             <div className="card">
-                <span className="card-title">Одногруппники · {members.length}</span>
+                <span className="card-title">Одногруппники · {classmates.length}</span>
                 <div>
-                    {members.map(m => (
+                    {classmates.map(m => (
                         <div className="member" key={m.id}>
                             <Avatar name={displayName(m)} photo={m.photo_url} />
                             <div className="grow">

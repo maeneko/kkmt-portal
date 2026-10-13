@@ -79,9 +79,9 @@ export default function Login({ onDone, onConfig }: { onDone: () => void; onConf
     const back = () => { setNeedInvite(false); setNeedName(false); setNames([]); setRosterId(0); setInvite(''); setTg(null); setVk(null); setError(''); };
     // Кто регистрируется: данные из виджета Telegram (или dev-ID без виджета)
     const who = vk
-        ? { id: 'VK', name: clip(vk.name || 'VK'), nick: '', photo: vk.photo }
+        ? { id: 'VK', name: clip(vk.name ? `@${vk.name}` : 'VK'), nick: '', photo: vk.photo }
         : tg
-        ? { id: tg.id, name: clip(tg.name || tg.nick || `ID ${tg.id}`), nick: tg.nick, photo: tg.photo }
+        ? { id: tg.id, name: clip(tg.nick ? `@${tg.nick}` : `ID ${tg.id}`), nick: '', photo: tg.photo }
         : { id: devId, name: clip(devNick.replace(/^@/, '') || `Dev ${devId}`), nick: devNick.replace(/^@/, ''), photo: null };
 
     return (
